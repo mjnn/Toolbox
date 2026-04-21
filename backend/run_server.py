@@ -1,5 +1,6 @@
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -22,9 +23,12 @@ def _resolve_workers() -> int:
     """
     Uvicorn 进程数（与「打包脚本是否并行」无关）。
 
-    未设置 TOOLBOX_WORKERS 时默认 2（规划见 docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md §3.1）。
+    - 源码 / 直接 `python -m uvicorn`：未设置 TOOLBOX_WORKERS 时默认 2（见 docs 规划）。
+    - PyInstaller 冻结 exe：**固定 1**。多 worker 会 spawn 子进程，子进程无法按 `main:app` 正确导入打包后的模块，导致启动失败。
     """
     _load_dotenv_if_present()
+    if getattr(sys, "frozen", False):
+        return 1
     raw = os.getenv("TOOLBOX_WORKERS", "").strip()
     if raw:
         try:

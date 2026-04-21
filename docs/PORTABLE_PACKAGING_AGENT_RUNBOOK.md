@@ -97,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 
 | 项 | 建议 |
 |----|------|
-| **Uvicorn workers** | **2**。未设置 `TOOLBOX_WORKERS` 时，`run_server.py` 默认 **2**。 |
+| **Uvicorn workers** | **2**（源码直接运行、未设置 `TOOLBOX_WORKERS` 时）。**PyInstaller 便携 exe 固定为 1**：多 worker 子进程无法正确导入打包后的 `main:app`，会导致启动失败（见 `backend/run_server.py`）。 |
 | **理由** | FastAPI/Starlette 单进程内异步可处理大量并发 I/O；**2 进程**可缓解少量**同步/阻塞**路径卡住事件循环；在 **1 核 RDS** 上继续加 worker 对吞吐收益有限，且增加 PG 连接与 CPU 争抢。 |
 | **不建议** | 在该 PG 规格下将 worker **长期开到 4 以上**（除非同步调高应用机与 RDS 规格并压测）。 |
 

@@ -91,6 +91,7 @@ if (Test-Path ".\run_server.spec") { Remove-Item ".\run_server.spec" -Force }
     --paths "." `
     --add-data "../frontend/dist;frontend/dist" `
     --add-data "../ref/toolboxweb;toolboxweb" `
+    --hidden-import "main" `
     --hidden-import "uvicorn.logging" `
     --hidden-import "uvicorn.loops.auto" `
     --hidden-import "uvicorn.protocols.http.auto" `

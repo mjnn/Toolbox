@@ -39,7 +39,7 @@
 
 This is **not** related to whether `build-release.ps1` used parallel npm/pip on the build machine.
 
-- **`TOOLBOX_WORKERS`**: number of backend processes (default **2** if unset).
+- **`TOOLBOX_WORKERS`**: number of backend processes when running from **source** (default **2** if unset). The **frozen `toolbox-backend.exe` always uses 1 worker** (PyInstaller + multiprocessing limitation).
 - **`SQLALCHEMY_POOL_SIZE` / `SQLALCHEMY_MAX_OVERFLOW`**: per-process DB pool (PostgreSQL only). Defaults: `4` and `2`.
 
 Place a `.env` next to `toolbox-backend.exe` (package root) or set variables before `start.cmd`. See `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1 for sizing notes (e.g. ~10 concurrent users on 1 vCPU / 2GB PostgreSQL).
