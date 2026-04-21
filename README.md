@@ -60,7 +60,7 @@ flowchart TB
 
 **前置**：Node.js（前端）、Python 3（后端）；建议在 `backend` 下使用虚拟环境并安装 `requirements.txt`。
 
-**环境变量（后端）**：首次克隆后，将 `backend/.env.example` 复制为 `backend/.env`，填写 **`DATABASE_URL`**（及生产环境下的 **`SECRET_KEY`** 等）。连接哪个数据库**只**由 `DATABASE_URL` 决定。
+**环境变量（后端）**：发布/部署前请将 `backend/.env.example` 复制为 `backend/.env`，填写 **`DATABASE_URL`**（及生产环境下的 **`SECRET_KEY`** 等）。
 
 在仓库根目录双击或执行：
 
@@ -70,7 +70,12 @@ start-dev.cmd
 
 将并发启动后端（默认 `http://127.0.0.1:3001`）与前端 Vite（默认 `http://127.0.0.1:3000`，API 由 Vite 代理到后端）。环境变量 `TOOLBOX_BACKEND_PORT` / `TOOLBOX_FRONTEND_PORT` 可改端口（需与 `frontend/vite.config.ts` 代理一致）。
 
-**数据库**：**仅 PostgreSQL**；`DATABASE_URL` 必填，见 **`docs/PROJECT_AND_AGENT_GUIDE.md`** §1.3。工作区内的 `backend/app.db` 若存在仅为历史备份，应用不会使用。
+**数据库模式（开发启动）**：
+
+- `start-dev.cmd`（默认）会以 **SQLite** 启动后端（`backend/app.db`），适合开发机快速联调。
+- 若要按部署形态联调 PostgreSQL，可执行：`start-dev.cmd -Database postgres`（此时读取 `backend/.env` 中的 `DATABASE_URL`）。
+
+**部署与发布**：仍以 **PostgreSQL** 为标准；工作区内的 `backend/app.db` 不用于发布机。
 
 ## 文档
 

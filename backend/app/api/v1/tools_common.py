@@ -8,6 +8,7 @@ from app.models import Tool, ToolOwner, User, UserToolPermission, PermissionStat
 
 SERVICE_ID_REGISTRY_TOOL_NAME = "service-id-registry"
 MOS_INTEGRATION_TOOLBOX_TOOL_NAME = "mos-integration-toolbox"
+RSA_TOKEN_LIVESTREAM_TOOL_NAME = "rsa-token-livestream"
 
 
 def get_tool_or_404(db: Session, tool_id: int) -> Tool:
@@ -59,6 +60,11 @@ def ensure_service_id_registry_tool(tool: Tool) -> None:
 def ensure_mos_integration_toolbox_tool(tool: Tool) -> None:
     if tool.name != MOS_INTEGRATION_TOOLBOX_TOOL_NAME:
         raise HTTPException(status_code=400, detail="当前功能仅支持 mos-integration-toolbox 工具")
+
+
+def ensure_rsa_token_livestream_tool(tool: Tool) -> None:
+    if tool.name != RSA_TOKEN_LIVESTREAM_TOOL_NAME:
+        raise HTTPException(status_code=400, detail="当前功能仅支持 rsa-token-livestream 工具")
 
 
 def raise_feature_http_exception(prefix: str, exc: Exception) -> None:

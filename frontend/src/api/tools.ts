@@ -11,7 +11,9 @@ import type {
   ServiceIdRuleOption,
   ServiceIdRuleOptionGroup,
   PaginatedServiceIdRuleOptions,
-  ServiceRuleCategory
+  ServiceRuleCategory,
+  RsaLivestreamConfig,
+  RsaLivestreamConfigUpdatePayload,
 } from './types'
 
 export const toolsApi = {
@@ -382,5 +384,16 @@ export const toolsApi = {
     data: { target: 'sp' | 'cdp' | 'afdp'; check_duplicated: boolean; vehicle_data: Record<string, any> }
   ): Promise<{ success: boolean; message: string; data: any }> {
     return api.post(`/tools/${toolId}/features/uat-vehicle-import`, data)
+  },
+
+  getRsaLivestreamConfig(toolId: number): Promise<RsaLivestreamConfig> {
+    return api.get(`/tools/${toolId}/features/livestream/config`)
+  },
+
+  updateRsaLivestreamManageConfig(
+    toolId: number,
+    payload: RsaLivestreamConfigUpdatePayload
+  ): Promise<RsaLivestreamConfig> {
+    return api.put(`/tools/${toolId}/features/livestream/manage-config`, payload)
   }
 }

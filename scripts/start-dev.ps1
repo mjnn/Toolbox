@@ -2,6 +2,14 @@
 # 可选环境变量（多实例并发时改端口，避免冲突）：
 #   TOOLBOX_BACKEND_PORT  默认 3001
 #   TOOLBOX_FRONTEND_PORT 默认 3000
+# 可选参数：
+#   -Database sqlite    默认，使用 backend/app.db
+#   -Database postgres  使用 backend/.env 中的 DATABASE_URL
+param(
+    [ValidateSet("sqlite", "postgres")]
+    [string]$Database = "sqlite"
+)
+
 $ErrorActionPreference = "Stop"
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $Backend = Join-Path $ProjectRoot "backend"
@@ -30,16 +38,22 @@ if ($env:TOOLBOX_FRONTEND_PORT) {
 }
 
 $venvPython = Join-Path $Backend ".venv\Scripts\python.exe"
-if (Test-Path $venvPython) {
-    $backendCmd = "& '$venvPython' -m uvicorn main:app --reload --host 127.0.0.1 --port $BackendPort"
+if ($Database -eq "sqlite") {
+    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='1'; `$env:DATABASE_URL='sqlite:///./app.db'; "
 } else {
-    $backendCmd = "python -m uvicorn main:app --reload --host 127.0.0.1 --port $BackendPort"
+    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='0'; "
+}
+if (Test-Path $venvPython) {
+    $backendCmd = "$backendEnvCmd& '$venvPython' -m uvicorn main:app --reload --host 127.0.0.1 --port $BackendPort"
+} else {
+    $backendCmd = "${backendEnvCmd}python -m uvicorn main:app --reload --host 127.0.0.1 --port $BackendPort"
 }
 
 $frontendCmd = "`$env:TOOLBOX_BACKEND_PORT='$BackendPort'; `$env:TOOLBOX_FRONTEND_PORT='$FrontendPort'; npm run dev"
 
 Write-Host "Project root: $ProjectRoot"
 Write-Host "Backend port: $BackendPort | Frontend port: $FrontendPort"
+Write-Host "Database mode: $Database"
 
 if (-not (Test-ListeningPort -Port $BackendPort)) {
     Write-Host "Opening backend window (http://127.0.0.1:$BackendPort) ..."

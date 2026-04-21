@@ -578,3 +578,22 @@ class MosTokenPreloadRequest(BaseModel):
     wait: bool = False
     timeout_seconds: int = Field(default=60, ge=1, le=600)
     force_refresh: bool = False
+
+
+class RsaLivestreamConfigResponse(BaseModel):
+    stream_page_url: str
+    stream_server: str
+    stream_key: str
+    placeholder_enabled: bool
+    placeholder_title: str
+    placeholder_message: str
+    updated_at: datetime
+
+
+class RsaLivestreamConfigUpdateRequest(BaseModel):
+    stream_page_url: Optional[str] = Field(default=None, min_length=1, max_length=2000)
+    stream_server: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    stream_key: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    placeholder_enabled: Optional[bool] = None
+    placeholder_title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    placeholder_message: Optional[str] = Field(default=None, min_length=1, max_length=1000)

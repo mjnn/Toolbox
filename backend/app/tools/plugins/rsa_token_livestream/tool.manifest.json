@@ -1,0 +1,23 @@
+{
+  "$schema": "../../../../../contracts/tool.manifest.schema.json",
+  "tool_key": "rsa-token-livestream",
+  "display_name": "RSA Token 直播",
+  "feature_slugs": [
+    "livestream/config",
+    "livestream/manage-config"
+  ],
+  "behavior_catalog": [
+    { "key": "livestream/config", "label": "RSA Token 直播配置查看" },
+    { "key": "livestream/manage-config", "label": "RSA Token 直播配置管理" }
+  ],
+  "frontend": {
+    "detail_panel_module": "RsaTokenLivestreamPanel",
+    "manage_tab_modules": [
+      {
+        "name": "rsa-livestream-manage",
+        "label": "直播配置",
+        "module": "RsaTokenLivestreamManageTab"
+      }
+    ]
+  }
+}

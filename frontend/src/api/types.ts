@@ -279,6 +279,25 @@ export interface PaginatedServiceIdRuleOptions {
   items: ServiceIdRuleOption[]
 }
 
+export interface RsaLivestreamConfig {
+  stream_page_url: string
+  stream_server: string
+  stream_key: string
+  placeholder_enabled: boolean
+  placeholder_title: string
+  placeholder_message: string
+  updated_at: string
+}
+
+export interface RsaLivestreamConfigUpdatePayload {
+  stream_page_url?: string
+  stream_server?: string
+  stream_key?: string
+  placeholder_enabled?: boolean
+  placeholder_title?: string
+  placeholder_message?: string
+}
+
 export interface APIAccessLogInDB {
   id: number
   user_id?: number | null

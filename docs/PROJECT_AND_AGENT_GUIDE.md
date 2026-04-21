@@ -32,7 +32,7 @@ version: 1.0
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3、TypeScript、Vite、Pinia、Element Plus、Vue Router |
-| 后端 | FastAPI、SQLModel、**PostgreSQL**（唯一支持的数据库；`DATABASE_URL` 见 `backend/.env` 与 `app/core/config_simple.py`）。JWT（python-jose） |
+| 后端 | FastAPI、SQLModel、**PostgreSQL**（部署与发布标准数据库；本地 `start-dev` 支持 SQLite 快捷模式）。JWT（python-jose） |
 | 契约 | `contracts/tool.manifest.schema.json`（各插件 `tool.manifest.json` 校验） |
 | 打包 | 可选：`scripts/build-release.ps1`（前端 build + PyInstaller 便携后端等） |
 
@@ -53,14 +53,23 @@ Toolbox_Project/
 
 **不必手改**：`frontend/dist/`、`backend/dist/`、`backend/build/`、`release/`、`node_modules/`、`backend/.venv/` 等为构建或依赖产物；便携包用 `scripts/build-release.ps1` 重新生成即可。
 
+### 1.3.1 开发机与部署机（能力边界与关系）
+
+| 角色 | 典型能力 | 在本项目中的职责 |
+|------|----------|------------------|
+| 开发机 | 权限较高，可安装 Node/Python、构建依赖 | 代码开发、`start-dev.cmd` 本地联调、构建便携包 |
+| 部署机 | 权限受限，通常不能安装新软件 | 接收并运行已打包产物（`release/toolbox-portable`），按 `.env` 连 PostgreSQL |
+
+**关系**：开发机负责“构建与验证”，部署机负责“运行与使用”。部署机不应承担源码构建或安装开发依赖的任务。
+
 **便携打包与 `.env`**：执行 `scripts/build-release.ps1` 时，若存在 **`backend/.env`**，会**自动复制**到 `release/toolbox-portable/.env`（与 exe 同级），便于解压后可直接启动；若本机未配置 `backend/.env`，产物中不含 `.env`，需自行放置。复制内容含密钥，**外传安装包前请脱敏**。详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** Step 2。
 
-**数据库（PostgreSQL，`DATABASE_URL` 为唯一权威）**
+**数据库（开发与部署分场景）**
 
-- **模板文件**：首次可复制 **`backend/.env.example`** 为 **`backend/.env`**，填写 **`DATABASE_URL=postgresql+psycopg2://...`**（勿将 `.env` 提交版本库）。
-- **连接来源**：`backend/app/core/config_simple.py` 在启动时加载 `backend/.env`；**未配置或配置为非 PostgreSQL 时进程会报错退出**。
-- **历史文件**：工作区若仍有 `backend/app.db` 等旧 SQLite 文件，仅为备份或遗留，应用**不会**读取；可归档后删除以免混淆。
-- **版本库**：根 `.gitignore` 仍忽略 `*.db` 等本地数据库文件，避免误提交。
+- **开发机（`start-dev.cmd`）默认 SQLite**：脚本会以参数 `-Database sqlite` 启动后端（默认值），数据库为 `backend/app.db`，用于快速联调。
+- **开发机切 PostgreSQL**：执行 `start-dev.cmd -Database postgres`；后端按 `backend/.env` 的 `DATABASE_URL` 启动。
+- **部署/发布机统一 PostgreSQL**：便携包与生产运行都应配置 `DATABASE_URL=postgresql+psycopg2://...`。
+- **版本库约束**：根 `.gitignore` 忽略 `*.db`，避免误提交本地 SQLite 文件。
 
 ### 1.4 后端宿主职责（关键文件）
 
@@ -106,6 +115,11 @@ Toolbox_Project/
 | 浏览器调 API | 仍走相对路径 `/api/v1/...`（由 Vite 代理到 3001） |
 
 修改后端端口时，**必须**同步修改 `vite.config.ts` 中的 `server.proxy`，否则前端联调失败。
+
+**开发启动参数（`start-dev.cmd`）**：
+
+- 默认（SQLite 快捷模式）：`start-dev.cmd`
+- 指定 PostgreSQL（读取 `backend/.env`）：`start-dev.cmd -Database postgres`
 
 ### 1.8 功能 URL 与审计（必须一致）
 

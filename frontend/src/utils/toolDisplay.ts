@@ -1,6 +1,7 @@
 const TOOL_DISPLAY_NAME_MAP: Record<string, string> = {
   'service-id-registry': 'Service ID 注册管理',
-  'mos-integration-toolbox': 'MOS 集成工具箱'
+  'mos-integration-toolbox': 'MOS 集成工具箱',
+  'rsa-token-livestream': 'RSA Token 直播'
 }
 
 export const getToolDisplayName = (toolName?: string | null): string => {

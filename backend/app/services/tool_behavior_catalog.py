@@ -65,7 +65,12 @@ def default_behavior_catalogs() -> dict[str, str]:
         {"key": "mos-manage/runtime-credentials", "label": "MOS 管理：运行环境凭据"},
         {"key": "mos-manage/change-logs", "label": "MOS 管理：配置变更记录"},
     ]
+    rsa_livestream = [
+        {"key": "livestream/config", "label": "RSA Token 直播配置查看"},
+        {"key": "livestream/manage-config", "label": "RSA Token 直播配置管理"},
+    ]
     return {
         "service-id-registry": json.dumps(service_id, ensure_ascii=False),
         "mos-integration-toolbox": json.dumps(mos, ensure_ascii=False),
+        "rsa-token-livestream": json.dumps(rsa_livestream, ensure_ascii=False),
     }

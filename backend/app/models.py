@@ -223,6 +223,24 @@ class ConfigChangeLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class RsaTokenLivestreamSetting(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("tool_id", name="uq_rsa_token_livestream_setting_tool"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    stream_page_url: str = Field(max_length=2000)
+    stream_server: str = Field(max_length=255)
+    stream_key: str = Field(max_length=255)
+    placeholder_enabled: bool = Field(default=True)
+    placeholder_title: str = Field(default="直播暂时关闭", max_length=120)
+    placeholder_message: str = Field(
+        default="当前 RSA Token 直播暂未开放，请联系工具负责人确认直播时间。",
+        max_length=1000,
+    )
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class ToolAnnouncement(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     tool_id: Optional[int] = Field(default=None, foreign_key="tool.id", index=True)

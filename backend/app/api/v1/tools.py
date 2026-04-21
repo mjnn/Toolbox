@@ -11,6 +11,7 @@ from app.api.v1.users import get_current_active_user
 from app.api.v1.tools_common import ensure_tool_access, get_tool_or_404
 from app.tools.plugins.service_id_registry.routes import router as service_id_plugin_router
 from app.tools.plugins.mos_integration_toolbox.routes import router as mos_plugin_router
+from app.tools.plugins.rsa_token_livestream.routes import router as rsa_token_livestream_plugin_router
 
 router = APIRouter()
 
@@ -70,3 +71,4 @@ async def list_tool_releases(
 
 router.include_router(service_id_plugin_router)
 router.include_router(mos_plugin_router)
+router.include_router(rsa_token_livestream_plugin_router)

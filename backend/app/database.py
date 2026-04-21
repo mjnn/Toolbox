@@ -24,10 +24,14 @@ from app.models import (  # noqa: F401 — imported for SQLModel metadata regist
     ServiceIdRegistryEntry,
     ServiceIdRuleOption,
     MosTokenPoolEntry,
+    RsaTokenLivestreamSetting,
 )
 
-def _engine_kwargs() -> dict:
-    # 每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)，需与 RDS 规格匹配
+def _engine_kwargs(database_url: str) -> dict:
+    # SQLite（本地开发）不使用连接池参数，避免 create_engine 参数不兼容。
+    if database_url.lower().startswith("sqlite"):
+        return {"connect_args": {"check_same_thread": False}}
+    # PostgreSQL：每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)
     pool_size = int(os.getenv("SQLALCHEMY_POOL_SIZE", "4"))
     max_overflow = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))
     pool_size = max(1, min(pool_size, 32))
@@ -48,7 +52,7 @@ _database_url = DATABASE_URL.strip()
 engine = create_engine(
     _database_url,
     echo=_should_echo_sql(),
-    **_engine_kwargs(),
+    **_engine_kwargs(_database_url),
 )
 
 SYSTEM_ROLES = {
@@ -64,6 +68,11 @@ SERVICE_ID_REGISTRY_TOOL = (
 MOS_INTEGRATION_TOOLBOX_TOOL = (
     "mos-integration-toolbox",
     "MOS综合工具箱：IAM X509、SIM、UAT AF DP、UAT SP、UAT车辆配置导入。",
+)
+
+RSA_TOKEN_LIVESTREAM_TOOL = (
+    "rsa-token-livestream",
+    "RSA Token 直播：统一入口查看直播并可由负责人控制占位提示页。",
 )
 
 BOOTSTRAP_USERS = [
@@ -170,6 +179,24 @@ def _ensure_mos_integration_toolbox_tool(session: Session) -> None:
             exists.description = description
             session.add(exists)
         elif exists.description and "重构版" in exists.description:
+            exists.description = description
+            session.add(exists)
+        return
+    session.add(
+        Tool(
+            name=tool_name,
+            description=description,
+            version="1.0.0",
+            is_active=True,
+        )
+    )
+
+
+def _ensure_rsa_token_livestream_tool(session: Session) -> None:
+    tool_name, description = RSA_TOKEN_LIVESTREAM_TOOL
+    exists = session.exec(select(Tool).where(Tool.name == tool_name)).first()
+    if exists:
+        if not exists.description:
             exists.description = description
             session.add(exists)
         return
@@ -326,6 +353,7 @@ def seed_initial_data():
         _ensure_first_superuser(session)
         _ensure_service_id_registry_tool(session)
         _ensure_mos_integration_toolbox_tool(session)
+        _ensure_rsa_token_livestream_tool(session)
         _sync_behavior_catalogs(session)
         session.commit()
 

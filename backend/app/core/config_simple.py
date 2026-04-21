@@ -27,17 +27,27 @@ if _cors_raw:
 else:
     BACKEND_CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
 
-def _require_postgresql_url(raw: str) -> str:
+def _allow_dev_sqlite() -> bool:
+    return os.getenv("TOOLBOX_ALLOW_SQLITE_DEV", "").strip().lower() in ("1", "true", "yes")
+
+
+def _normalize_database_url(raw: str) -> str:
     u = (raw or "").strip()
     if not u:
+        if _allow_dev_sqlite():
+            # 开发便捷模式：允许在 start-dev 场景下免配置直连本地 SQLite。
+            return "sqlite:///./app.db"
         raise RuntimeError(
             "DATABASE_URL 未设置。请在 backend/.env 中配置 PostgreSQL，例如：\n"
             "  DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname"
         )
     low = u.lower()
     if low.startswith("sqlite"):
+        if _allow_dev_sqlite():
+            return u
         raise RuntimeError(
-            "SQLite 已弃用。请改用 PostgreSQL（postgresql+psycopg2://...）。"
+            "SQLite 仅允许本地开发快捷启动（设置 TOOLBOX_ALLOW_SQLITE_DEV=1）。"
+            " 部署与发布请改用 PostgreSQL（postgresql+psycopg2://...）。"
         )
     if not (low.startswith("postgresql") or low.startswith("postgres://")):
         raise RuntimeError(
@@ -46,8 +56,8 @@ def _require_postgresql_url(raw: str) -> str:
     return u
 
 
-# 仅支持 PostgreSQL（见上校验）
-DATABASE_URL = _require_postgresql_url(os.getenv("DATABASE_URL", ""))
+# 默认支持 PostgreSQL；仅在 TOOLBOX_ALLOW_SQLITE_DEV=1 时允许 SQLite（用于本地开发快捷启动）。
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", ""))
 # 以下由 run_server.py / database.py 读取（不在本文件赋值）：
 # TOOLBOX_WORKERS — Uvicorn 进程数；未设置时默认 2
 # SQLALCHEMY_POOL_SIZE / SQLALCHEMY_MAX_OVERFLOW — 连接池（默认 4 / 2）

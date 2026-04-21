@@ -1,8 +1,10 @@
 import type { Component } from 'vue'
 import ServiceIdRegistryPanel from '@/components/tool-detail/ServiceIdRegistryPanel.vue'
 import MosIntegrationToolboxPanel from '@/components/tool-detail/MosIntegrationToolboxPanel.vue'
+import RsaTokenLivestreamPanel from '@/components/tool-detail/RsaTokenLivestreamPanel.vue'
 import ServiceIdRegistryManageTab from '@/components/tool-manage/ServiceIdRegistryManageTab.vue'
 import MosIntegrationToolboxManageTab from '@/components/tool-manage/MosIntegrationToolboxManageTab.vue'
+import RsaTokenLivestreamManageTab from '@/components/tool-manage/RsaTokenLivestreamManageTab.vue'
 
 export type ManageTabSpec = {
   name: string
@@ -14,6 +16,7 @@ export type ManageTabSpec = {
 const toolDetailByKey: Record<string, Component> = {
   'service-id-registry': ServiceIdRegistryPanel,
   'mos-integration-toolbox': MosIntegrationToolboxPanel,
+  'rsa-token-livestream': RsaTokenLivestreamPanel,
 }
 
 const toolManageExtraTabsByKey: Record<string, ManageTabSpec[]> = {
@@ -29,6 +32,13 @@ const toolManageExtraTabsByKey: Record<string, ManageTabSpec[]> = {
       name: 'mos-toolbox-manage',
       label: 'MOS 工具配置',
       component: MosIntegrationToolboxManageTab,
+    },
+  ],
+  'rsa-token-livestream': [
+    {
+      name: 'rsa-livestream-manage',
+      label: '直播配置',
+      component: RsaTokenLivestreamManageTab,
     },
   ],
 }
