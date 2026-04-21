@@ -22,6 +22,12 @@ start-dev.cmd
 
 完整说明、目录结构与 Agent 协作约定见 **`docs/README.md`**（从 **`docs/PROJECT_AND_AGENT_GUIDE.md`** 读起）。
 
+## 远程仓库（Git）
+
+**默认 GitHub 地址**：`https://github.com/mjnn/Toolbox.git`（网页：[mjnn/Toolbox](https://github.com/mjnn/Toolbox)）。本机已克隆并配置过 `origin` 时，在仓库根目录提交后执行 **`git push`** 或 **`git push origin main`** 即可。
+
+更完整的说明（克隆、补配 `remote`、SSH）见 **`docs/REMOTE.md`**。
+
 ## 持续集成（GitHub）
 
 推送到 **`main` / `master`** 或向这两支开 **Pull Request** 时，GitHub Actions 会并行执行：

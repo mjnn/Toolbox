@@ -19,6 +19,7 @@
 | `templates/NEW_TOOL_AGENT_TEMPLATE.md` | 新工具需求模板 |
 | `MOS_TOOLBOX_REBUILD_BASELINE.md` | MOS 单工具重构范围与契约草案 |
 | `PORTABLE_PACKAGING_AGENT_RUNBOOK.md` | 便携打包作业手册 |
+| `REMOTE.md` | Git 远程仓库地址与推送 / 克隆命令 |
 
 ## 环境与数据库（避免歧义）
 
@@ -33,6 +34,11 @@
 
 - **GitHub Actions**：`.github/workflows/ci.yml`（`main` / `master` 的 push 与 PR）：工具 manifest 校验、插件边界检查、`frontend` 生产构建。
 - **本地对齐**：根目录 `powershell -File scripts/run-ci-tool-checks.ps1` + `frontend` 下 `pnpm run build`。
+
+## 远程仓库（Git）
+
+- **HTTPS**：`https://github.com/mjnn/Toolbox.git` · **默认分支**：`main`
+- **说明与常用命令**（克隆、推送、`remote` 补配）：**`REMOTE.md`**（本目录）
 
 ## 相关非 docs 路径
 

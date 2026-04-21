@@ -228,6 +228,7 @@ powershell -File scripts/run-ci-tool-checks.ps1
 | SQLite 备份导入 PostgreSQL | `scripts/migrate_sqlite_to_postgres.py`（见 §1.9） |
 | `ref/` 说明 | `ref/README.md` |
 | 后端环境变量模板 | `backend/.env.example`（复制为 `backend/.env`） |
+| Git 远程说明 | `docs/REMOTE.md`（GitHub 地址与 `git push` 常用命令） |
 
 ---
 
