@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-将 SQLite 备份（如 ref/app.db）中的业务数据导入当前 DATABASE_URL 指向的 PostgreSQL。
+一次性工具：将历史 SQLite 备份（如 ref/app.db）导入当前 DATABASE_URL 指向的 PostgreSQL。
+应用运行时不再使用 SQLite，仅用于自旧备份迁移数据。
 
 用法（在仓库根目录）：
   backend\\.venv\\Scripts\\python.exe scripts/migrate_sqlite_to_postgres.py --sqlite ref/app.db

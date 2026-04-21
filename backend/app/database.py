@@ -10,7 +10,6 @@ from app.core.config_simple import (
     FIRST_SUPERUSER,
     FIRST_SUPERUSER_PASSWORD,
     FIRST_SUPERUSER_USERNAME,
-    BACKEND_ROOT,
 )
 from app.models import (  # noqa: F401 — imported for SQLModel metadata registration
     Tool,
@@ -27,23 +26,8 @@ from app.models import (  # noqa: F401 — imported for SQLModel metadata regist
     MosTokenPoolEntry,
 )
 
-def _normalize_sqlite_url(url: str) -> str:
-    """将 sqlite:///./app.db 解析为相对 backend 根目录的绝对路径，避免工作目录不同导致找不到库文件。"""
-    if url.startswith("sqlite:///./"):
-        rel = url[len("sqlite:///./") :]
-        abs_path = (BACKEND_ROOT / rel).resolve()
-        return f"sqlite:///{abs_path.as_posix()}"
-    return url
-
-
-def _is_sqlite(url: str) -> bool:
-    return url.strip().lower().startswith("sqlite")
-
-
-def _engine_kwargs(url: str) -> dict:
-    if _is_sqlite(url):
-        return {"connect_args": {"check_same_thread": False}}
-    # PostgreSQL：每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)，需与 RDS 规格匹配
+def _engine_kwargs() -> dict:
+    # 每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)，需与 RDS 规格匹配
     pool_size = int(os.getenv("SQLALCHEMY_POOL_SIZE", "4"))
     max_overflow = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))
     pool_size = max(1, min(pool_size, 32))
@@ -59,17 +43,12 @@ def _should_echo_sql() -> bool:
     return os.getenv("SQL_ECHO", "").strip().lower() in ("1", "true", "yes")
 
 
-_raw_database_url = DATABASE_URL.strip()
-_database_url = (
-    _normalize_sqlite_url(_raw_database_url)
-    if _is_sqlite(_raw_database_url)
-    else _raw_database_url
-)
+_database_url = DATABASE_URL.strip()
 
 engine = create_engine(
     _database_url,
     echo=_should_echo_sql(),
-    **_engine_kwargs(_database_url),
+    **_engine_kwargs(),
 )
 
 SYSTEM_ROLES = {
@@ -355,87 +334,6 @@ def seed_initial_data():
             _ensure_bootstrap_users(session)
         session.commit()
 
-def _migrate_user_columns(session: Session) -> None:
-    """旧库补字段：is_approved、avatar_url"""
-    try:
-        rows = session.exec(text("PRAGMA table_info(user)")).all()
-    except Exception:
-        return
-    cols = {r[1] for r in rows}
-    if "is_approved" not in cols:
-        session.exec(text("ALTER TABLE user ADD COLUMN is_approved BOOLEAN DEFAULT 1"))
-        session.commit()
-    if "avatar_url" not in cols:
-        session.exec(text("ALTER TABLE user ADD COLUMN avatar_url VARCHAR(512)"))
-        session.commit()
-    if "department" not in cols:
-        session.exec(text("ALTER TABLE user ADD COLUMN department VARCHAR(100)"))
-        session.commit()
-
-
-def _migrate_tool_spec_revision(session: Session) -> None:
-    """旧库补字段：tool.spec_revision（需求/模板修订版本号）"""
-    try:
-        rows = session.exec(text("PRAGMA table_info(tool)")).all()
-    except Exception:
-        return
-    cols = {r[1] for r in rows}
-    if "spec_revision" not in cols:
-        session.exec(text("ALTER TABLE tool ADD COLUMN spec_revision VARCHAR(32)"))
-        session.commit()
-
-
-def _migrate_tool_behavior_catalog_json(session: Session) -> None:
-    try:
-        rows = session.exec(text("PRAGMA table_info(tool)")).all()
-    except Exception:
-        return
-    cols = {r[1] for r in rows}
-    if "behavior_catalog_json" not in cols:
-        session.exec(text("ALTER TABLE tool ADD COLUMN behavior_catalog_json TEXT"))
-        session.commit()
-
-
-def _migrate_apiaccesslog_behavior_columns(session: Session) -> None:
-    try:
-        rows = session.exec(text("PRAGMA table_info(apiaccesslog)")).all()
-    except Exception:
-        return
-    cols = {r[1] for r in rows}
-    if "behavior_label" not in cols:
-        session.exec(text("ALTER TABLE apiaccesslog ADD COLUMN behavior_label VARCHAR(200)"))
-        session.commit()
-
-
-def _migrate_tool_announcement_columns(session: Session) -> None:
-    try:
-        rows = session.exec(text("PRAGMA table_info(toolannouncement)")).all()
-    except Exception:
-        return
-    cols = {r[1] for r in rows}
-    if "visibility" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN visibility VARCHAR(20) DEFAULT 'global'"))
-        session.commit()
-    if "priority" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN priority VARCHAR(20) DEFAULT 'notice'"))
-        session.commit()
-    if "scroll_speed_seconds" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN scroll_speed_seconds INTEGER DEFAULT 45"))
-        session.commit()
-    if "font_family" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN font_family VARCHAR(100)"))
-        session.commit()
-    if "font_size_px" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN font_size_px INTEGER DEFAULT 14"))
-        session.commit()
-    if "text_color" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN text_color VARCHAR(20)"))
-        session.commit()
-    if "background_color" not in cols:
-        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN background_color VARCHAR(20)"))
-        session.commit()
-
-
 def _backfill_apiaccesslog_behavior_labels(session: Session) -> None:
     from app.services.tool_behavior_catalog import resolve_behavior_label_from_tool
 
@@ -457,13 +355,6 @@ def _backfill_apiaccesslog_behavior_labels(session: Session) -> None:
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
-    if _is_sqlite(_raw_database_url):
-        with Session(engine) as session:
-            _migrate_user_columns(session)
-            _migrate_tool_spec_revision(session)
-            _migrate_tool_behavior_catalog_json(session)
-            _migrate_apiaccesslog_behavior_columns(session)
-            _migrate_tool_announcement_columns(session)
     seed_initial_data()
     with Session(engine) as session:
         _backfill_apiaccesslog_behavior_labels(session)

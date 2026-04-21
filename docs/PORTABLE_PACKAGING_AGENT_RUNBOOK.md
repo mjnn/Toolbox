@@ -97,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 
 | 项 | 建议 |
 |----|------|
-| **Uvicorn workers** | **2**。未设置 `TOOLBOX_WORKERS` 且 `DATABASE_URL` 为 PostgreSQL 时，`run_server.py` 默认 **2**；SQLite 文件库强制 **1**（多进程共写同一文件不可靠）。 |
+| **Uvicorn workers** | **2**。未设置 `TOOLBOX_WORKERS` 时，`run_server.py` 默认 **2**。 |
 | **理由** | FastAPI/Starlette 单进程内异步可处理大量并发 I/O；**2 进程**可缓解少量**同步/阻塞**路径卡住事件循环；在 **1 核 RDS** 上继续加 worker 对吞吐收益有限，且增加 PG 连接与 CPU 争抢。 |
 | **不建议** | 在该 PG 规格下将 worker **长期开到 4 以上**（除非同步调高应用机与 RDS 规格并压测）。 |
 
@@ -105,7 +105,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 
 **环境变量**（`backend/.env` 或便携包工作目录下的 `.env`）：
 
-- `TOOLBOX_WORKERS`：显式覆盖 worker 数；与 SQLite 冲突时进程内会限制为 1。
+- `TOOLBOX_WORKERS`：显式覆盖 worker 数（默认 2）。
 - `SQLALCHEMY_POOL_SIZE`、`SQLALCHEMY_MAX_OVERFLOW`：每 worker 连接池（仅 PostgreSQL）。
 
 ### Step 3：启动冒烟验证

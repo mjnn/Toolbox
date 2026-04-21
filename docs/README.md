@@ -23,10 +23,9 @@
 
 ## 环境与数据库（避免歧义）
 
-- **首次配置**：复制 **`backend/.env.example`** → **`backend/.env`**，再填写真实连接串与密钥（`.env` 不提交）。
-- **连哪个库**：只由 **`backend/.env` 的 `DATABASE_URL`** 决定（见 `app/core/config_simple.py`）。
-- **PostgreSQL**：`DATABASE_URL` 为 `postgresql+...` 时，应用**不**使用仓库里的 `backend/app.db`；该文件若存在多为历史文件，可自行处理。
-- **SQLite**：仅当 `DATABASE_URL` 为 `sqlite:///./app.db` 或未配置（代码默认）时，才使用 **`backend/app.db`**。
+- **首次配置**：复制 **`backend/.env.example`** → **`backend/.env`**，填写 **`DATABASE_URL=postgresql+psycopg2://...`** 与密钥（`.env` 不提交）。
+- **仅 PostgreSQL**：应用**只**认 `DATABASE_URL` 中的 PostgreSQL 连接串；未配置或误配为 SQLite 时**启动失败**（见 `app/core/config_simple.py`）。
+- **历史 `backend/app.db`**：若仍存在，仅为本地备份或遗留，应用不会读取。
 
 更完整的说明见 **`PROJECT_AND_AGENT_GUIDE.md`** §1.3、§1.9。
 

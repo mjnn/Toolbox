@@ -4,7 +4,7 @@ description: >-
   供 Agent / 人工在「不展开完整仓库上下文」的前提下，按统一约束实现新工具或改造管理页。
   与基底职责、路由、审计、UI 规范对齐。
 version: 1.7
-stack: Vue3 + Element Plus + TypeScript（前端）; FastAPI + SQLModel + 数据库由 `backend/.env` 的 `DATABASE_URL` 决定（常见 PostgreSQL；未配置时代码默认 SQLite `sqlite:///./app.db`，见 `docs/PROJECT_AND_AGENT_GUIDE.md` §1.3）
+stack: Vue3 + Element Plus + TypeScript（前端）; FastAPI + SQLModel + PostgreSQL（`backend/.env` 的 `DATABASE_URL`，见 `docs/PROJECT_AND_AGENT_GUIDE.md` §1.3）
 ---
 
 # MOS综合工具箱 · 工具标准接入规范

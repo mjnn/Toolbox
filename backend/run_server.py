@@ -18,36 +18,22 @@ def _load_dotenv_if_present() -> None:
             break
 
 
-def _is_sqlite_url(url: str) -> bool:
-    return url.strip().lower().startswith("sqlite")
-
-
 def _resolve_workers() -> int:
     """
     Uvicorn 进程数（与「打包脚本是否并行」无关）。
 
-    默认：PostgreSQL → 2；SQLite 文件 → 1（多进程共写同一 SQLite 文件不可靠）。
-    规划依据见 docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md「运行时 Uvicorn worker」。
+    未设置 TOOLBOX_WORKERS 时默认 2（规划见 docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md §3.1）。
     """
     _load_dotenv_if_present()
-    url = os.getenv("DATABASE_URL", "").strip()
-
-    if not url or _is_sqlite_url(url):
-        max_w = 1
-    else:
-        max_w = 8
-
     raw = os.getenv("TOOLBOX_WORKERS", "").strip()
     if raw:
         try:
             w = int(raw)
         except ValueError:
-            w = 1
+            w = 2
     else:
-        w = 2 if max_w > 1 else 1
-
-    w = max(1, min(w, max_w))
-    return w
+        w = 2
+    return max(1, min(w, 8))
 
 
 if __name__ == "__main__":

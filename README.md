@@ -16,7 +16,7 @@ start-dev.cmd
 
 将并发启动后端（默认 `http://127.0.0.1:3001`）与前端 Vite（默认 `http://127.0.0.1:3000`，API 由 Vite 代理到后端）。环境变量 `TOOLBOX_BACKEND_PORT` / `TOOLBOX_FRONTEND_PORT` 可改端口（需与 `frontend/vite.config.ts` 代理一致）。
 
-**数据库**：后端连哪个库**只**由 **`backend/.env` 的 `DATABASE_URL`** 决定。配置为 PostgreSQL 时不会使用工作区里的 `backend/app.db`；该文件仅在 SQLite 模式（或默认未配置 `DATABASE_URL`）下作为数据文件。详见 **`docs/PROJECT_AND_AGENT_GUIDE.md`** §1.3。
+**数据库**：**仅 PostgreSQL**；`DATABASE_URL` 必填，见 **`docs/PROJECT_AND_AGENT_GUIDE.md`** §1.3。工作区内的 `backend/app.db` 若存在仅为历史备份，应用不会使用。
 
 ## 文档
 

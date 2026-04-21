@@ -32,7 +32,7 @@ version: 1.0
 | 层级 | 技术 |
 |------|------|
 | 前端 | Vue 3、TypeScript、Vite、Pinia、Element Plus、Vue Router |
-| 后端 | FastAPI、SQLModel、**数据库以 `backend/.env` 的 `DATABASE_URL` 为唯一权威**（见 `app/core/config_simple.py`）：常见为 **PostgreSQL**（`postgresql+psycopg2://...`）；亦可为 **SQLite**（`sqlite:///./app.db`，文件在 `backend/` 下）。**未在 `.env` 中配置 `DATABASE_URL` 时，代码默认回退为 SQLite** `sqlite:///./app.db`。JWT（python-jose） |
+| 后端 | FastAPI、SQLModel、**PostgreSQL**（唯一支持的数据库；`DATABASE_URL` 见 `backend/.env` 与 `app/core/config_simple.py`）。JWT（python-jose） |
 | 契约 | `contracts/tool.manifest.schema.json`（各插件 `tool.manifest.json` 校验） |
 | 打包 | 可选：`scripts/build-release.ps1`（前端 build + PyInstaller 便携后端等） |
 
@@ -46,20 +46,19 @@ Toolbox_Project/
 ├── frontend/                # Vue SPA
 ├── contracts/               # JSON Schema 等跨端契约
 ├── docs/                    # 规范、模板、本文档（见 docs/README.md 索引）
-├── scripts/                 # 开发启动、CI 检查、发布脚本、SQLite→PG 迁移脚本等
-├── ref/                     # 参考/归档：旧 toolboxweb 源码、本地 SQLite 备份等（见 ref/README.md）
+├── scripts/                 # 开发启动、CI 检查、发布脚本、历史 SQLite→PG 一次性迁移脚本等
+├── ref/                     # 参考/归档：旧 toolboxweb 源码等（见 ref/README.md）
 ├── start-dev.cmd            # 根目录一键开发（调用 scripts）
 ```
 
 **不必手改**：`frontend/dist/`、`backend/dist/`、`backend/build/`、`release/`、`node_modules/`、`backend/.venv/` 等为构建或依赖产物；便携包用 `scripts/build-release.ps1` 重新生成即可。
 
-**数据库（以 `DATABASE_URL` 为唯一权威）**
+**数据库（PostgreSQL，`DATABASE_URL` 为唯一权威）**
 
-- **模板文件**：首次可复制 **`backend/.env.example`** 为 **`backend/.env`**，再按环境填写（勿将 `.env` 提交版本库）。
-- **连接来源**：`backend/.env` 中的 **`DATABASE_URL`**，由 `backend/app/core/config_simple.py` 在启动时加载。
-- **使用 PostgreSQL 时**（`DATABASE_URL` 为 `postgresql+...`）：应用**只**访问该实例；工作区内的 **`backend/app.db` 不会被读取**，若仍存在多为历史遗留或手动拷贝的备份，可自行备份后删除以免与「当前数据源」混淆。
-- **使用 SQLite 时**（`DATABASE_URL` 为 `sqlite:///./app.db`，或 **未配置** `DATABASE_URL` 而走代码默认）：数据文件为 **`backend/app.db`**（相对路径锚定在 `backend/` 目录）。
-- **版本库**：根 `.gitignore` 默认忽略 `backend/app.db` 与 `ref/archive/sqlite-backups/*.db`，避免误提交大文件或环境数据。
+- **模板文件**：首次可复制 **`backend/.env.example`** 为 **`backend/.env`**，填写 **`DATABASE_URL=postgresql+psycopg2://...`**（勿将 `.env` 提交版本库）。
+- **连接来源**：`backend/app/core/config_simple.py` 在启动时加载 `backend/.env`；**未配置或配置为非 PostgreSQL 时进程会报错退出**。
+- **历史文件**：工作区若仍有 `backend/app.db` 等旧 SQLite 文件，仅为备份或遗留，应用**不会**读取；可归档后删除以免混淆。
+- **版本库**：根 `.gitignore` 仍忽略 `*.db` 等本地数据库文件，避免误提交。
 
 ### 1.4 后端宿主职责（关键文件）
 
@@ -118,7 +117,7 @@ Toolbox_Project/
 
 ### 1.9 行为目录与数据库的注意事项
 
-**数据库与连接**：与 §1.3 一致，**运行时只认 `backend/.env` 的 `DATABASE_URL`**。若需将 **SQLite 导出文件**（例如 `ref/app.db` 或自备份路径）中的数据导入**当前配置的 PostgreSQL**，可在仓库根目录执行（迁移脚本写入的目标库以当时 `.env` 中的 `DATABASE_URL` 为准）：
+**数据库与连接**：与 §1.3 一致，**仅 PostgreSQL**。若仍持有**历史 SQLite 备份**（例如 `ref/app.db`），可一次性导入当前库（目标以 `.env` 中 `DATABASE_URL` 为准）：
 
 ```powershell
 backend\.venv\Scripts\python.exe scripts/migrate_sqlite_to_postgres.py --sqlite ref/app.db
@@ -130,7 +129,7 @@ backend\.venv\Scripts\python.exe scripts/migrate_sqlite_to_postgres.py --sqlite 
 
 ### 1.9.1 生产运行：Uvicorn worker 与 PostgreSQL 连接池
 
-**与打包脚本无关**：`scripts/build-release.ps1` 默认**顺序**构建；运行时并发由 **`backend/run_server.py`** 的 Uvicorn `workers` 控制（环境变量 `TOOLBOX_WORKERS`，未设置时 PostgreSQL 默认 **2**、SQLite 文件 **1**）。在约 **20～50** 用户、峰值约 **10** 人同时访问、RDS **1 vCPU / 2GB** 的假设下，**2 个 worker** 为推荐起点；连接池默认 `SQLALCHEMY_POOL_SIZE=4`、`SQLALCHEMY_MAX_OVERFLOW=2`（每进程），详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1**。
+**与打包脚本无关**：`scripts/build-release.ps1` 默认**顺序**构建；运行时并发由 **`backend/run_server.py`** 的 Uvicorn `workers` 控制（环境变量 `TOOLBOX_WORKERS`，未设置时默认 **2**）。在约 **20～50** 用户、峰值约 **10** 人同时访问、RDS **1 vCPU / 2GB** 的假设下，**2 个 worker** 为推荐起点；连接池默认 `SQLALCHEMY_POOL_SIZE=4`、`SQLALCHEMY_MAX_OVERFLOW=2`（每进程），详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1**。
 
 ### 1.10 质量闸门（合并前建议）
 

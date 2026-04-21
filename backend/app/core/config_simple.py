@@ -27,12 +27,30 @@ if _cors_raw:
 else:
     BACKEND_CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
 
-# 数据库：默认本地 SQLite；生产可用
-# postgresql+psycopg2://user:pass@host:5432/dbname?sslmode=require
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db").strip()
+def _require_postgresql_url(raw: str) -> str:
+    u = (raw or "").strip()
+    if not u:
+        raise RuntimeError(
+            "DATABASE_URL 未设置。请在 backend/.env 中配置 PostgreSQL，例如：\n"
+            "  DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname"
+        )
+    low = u.lower()
+    if low.startswith("sqlite"):
+        raise RuntimeError(
+            "SQLite 已弃用。请改用 PostgreSQL（postgresql+psycopg2://...）。"
+        )
+    if not (low.startswith("postgresql") or low.startswith("postgres://")):
+        raise RuntimeError(
+            "DATABASE_URL 须为 PostgreSQL 连接串（postgresql+psycopg2://...）。"
+        )
+    return u
+
+
+# 仅支持 PostgreSQL（见上校验）
+DATABASE_URL = _require_postgresql_url(os.getenv("DATABASE_URL", ""))
 # 以下由 run_server.py / database.py 读取（不在本文件赋值）：
-# TOOLBOX_WORKERS — Uvicorn 进程数；未设置时 PG 默认 2、SQLite 1
-# SQLALCHEMY_POOL_SIZE / SQLALCHEMY_MAX_OVERFLOW — PostgreSQL 连接池（默认 4 / 2）
+# TOOLBOX_WORKERS — Uvicorn 进程数；未设置时默认 2
+# SQLALCHEMY_POOL_SIZE / SQLALCHEMY_MAX_OVERFLOW — 连接池（默认 4 / 2）
 
 # JWT
 SECRET_KEY = os.getenv("SECRET_KEY", "your-strong-secret-key-change-in-production")
@@ -46,5 +64,4 @@ FIRST_SUPERUSER_PASSWORD = os.getenv("FIRST_SUPERUSER_PASSWORD", "admin123")
 # 默认可留空，将使用邮箱 @ 前的本地部分作为用户名
 FIRST_SUPERUSER_USERNAME = os.getenv("FIRST_SUPERUSER_USERNAME", "").strip()
 
-# 供路径解析等使用（如 SQLite 相对路径锚定到 backend 目录）
 BACKEND_ROOT = _backend_root
