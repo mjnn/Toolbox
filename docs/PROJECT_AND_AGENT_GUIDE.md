@@ -53,6 +53,8 @@ Toolbox_Project/
 
 **不必手改**：`frontend/dist/`、`backend/dist/`、`backend/build/`、`release/`、`node_modules/`、`backend/.venv/` 等为构建或依赖产物；便携包用 `scripts/build-release.ps1` 重新生成即可。
 
+**便携打包与 `.env`**：执行 `scripts/build-release.ps1` 时，若存在 **`backend/.env`**，会**自动复制**到 `release/toolbox-portable/.env`（与 exe 同级），便于解压后可直接启动；若本机未配置 `backend/.env`，产物中不含 `.env`，需自行放置。复制内容含密钥，**外传安装包前请脱敏**。详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** Step 2。
+
 **数据库（PostgreSQL，`DATABASE_URL` 为唯一权威）**
 
 - **模板文件**：首次可复制 **`backend/.env.example`** 为 **`backend/.env`**，填写 **`DATABASE_URL=postgresql+psycopg2://...`**（勿将 `.env` 提交版本库）。

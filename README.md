@@ -43,7 +43,7 @@ start-dev.cmd
 |------|------|
 | `scripts/start-dev.ps1` | 开发启动（由 `start-dev.cmd` 调用） |
 | `scripts/run-ci-tool-checks.ps1` | 合并前：manifest + 插件边界检查（与 CI 中 Python 两步一致） |
-| `scripts/build-release.ps1` | 构建 Windows 便携包至 `release/toolbox-portable`（详见 `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`） |
+| `scripts/build-release.ps1` | 构建 Windows 便携包至 `release/toolbox-portable`；若存在 `backend/.env` 会复制为产物内 `.env`（详见 `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`） |
 
 ## 仓库布局（精简）
 

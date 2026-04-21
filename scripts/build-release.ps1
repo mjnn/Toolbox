@@ -148,5 +148,13 @@ New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "logs") -Force | Out-N
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "run") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "static\avatars") -Force | Out-Null
 
+$BackendEnv = Join-Path $BackendDir ".env"
+if (Test-Path $BackendEnv) {
+    Copy-Item $BackendEnv (Join-Path $ReleaseDir ".env") -Force
+    Write-Host "Included backend/.env -> release/toolbox-portable/.env"
+} else {
+    Write-Warning "backend/.env not found; portable package has no .env. Add DATABASE_URL etc. next to toolbox-backend.exe or copy backend/.env before build."
+}
+
 Write-Host "[5/5] Done."
 Write-Host "Portable package folder: $ReleaseDir"

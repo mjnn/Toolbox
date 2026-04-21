@@ -88,6 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 2. 可选 **仅缩短打包机耗时**：`scripts/build-release.ps1 -ParallelPrereqs`（并行执行前端 build 与 pip 两作业，与运行时 worker **无关**）
 3. 用 `PyInstaller` 打包后端（`backend/run_server.py`）
 4. 组装发布目录 `release/toolbox-portable`
+5. **环境文件**：若打包机存在 **`backend/.env`**，会**自动复制**为 **`release/toolbox-portable/.env`**（与 `toolbox-backend.exe` 同级），运行时 `run_server.py` 会从当前工作目录加载该文件；若不存在则产物中无 `.env`，需自行放置或打包前补好 `backend/.env`。**外传压缩包前请检查是否含数据库密码/密钥，必要时脱敏。**
 
 ### 3.1 运行时 Uvicorn worker 与 PostgreSQL 连接池
 
@@ -229,6 +230,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/st
 - [ ] 三个默认账号可登录
 - [ ] 五类日志文件均能生成并追加内容
 - [ ] `README.md` 在发布目录内存在
+- [ ] 若需开箱即连数据库：打包前存在 **`backend/.env`**，产物中应有 **`release/toolbox-portable/.env`**
 
 ---
 
@@ -258,7 +260,7 @@ Goals:
 7) Both localhost and LAN IP URL should be reachable.
 
 Process requirements:
-- Use scripts/build-release.ps1 for packaging (default sequential npm build then pip; optional -ParallelPrereqs only to speed up the build machine).
+- Use scripts/build-release.ps1 for packaging (default sequential npm build then pip; optional -ParallelPrereqs only to speed up the build machine). If backend/.env exists, it is copied to release/toolbox-portable/.env next to the exe.
 - Verify with release/toolbox-portable/start.ps1 then stop.ps1.
 - Validate all three accounts by calling /api/v1/auth/login.
 - Confirm "/" response starts with "<!DOCTYPE html>".
@@ -277,6 +279,7 @@ Deliverables:
 ## 7. 变更后快速复打包指令
 
 ```powershell
+# 建议先维护好 backend/.env（含 DATABASE_URL 等），打包时会自动带入 release/toolbox-portable/.env
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 # Optional: parallel prereqs on build machine only — .\scripts\build-release.ps1 -ParallelPrereqs
 powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/start.ps1"

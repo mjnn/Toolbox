@@ -8,7 +8,8 @@
 2. **`TOOL_INTEGRATION_STANDARD.md`** — 接入新工具或改管理页的硬约束（路由、权限、审计、UI、分页、角色）。
 3. **`templates/NEW_TOOL_AGENT_TEMPLATE.md`** — 需求表模板；复制为新文件后填写再 @ 给 Agent。
 4. **`MOS_TOOLBOX_REBUILD_BASELINE.md`** — 自旧 `ref/toolboxweb` 迁入时的**能力范围**与接口草案（单工具 + UAT/LIVE 切换等）。
-5. **`PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** — Windows 可移植包（无 Python/Node）的打包、验收与排障；产物目录为 `release/toolbox-portable`（由 `scripts/build-release.ps1` 生成，默认不纳入版本库）。
+5. **`PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** — Windows 可移植包（无 Python/Node）的打包、验收与排障；产物目录为 `release/toolbox-portable`（由 `scripts/build-release.ps1` 生成，默认不纳入版本库）。打包时若存在 **`backend/.env`**，会一并复制到产物根目录 **`.env`**。
+6. **`RELEASE_RUNBOOK.md`** — 发布前闸门、生产环境变量、部署形态、冒烟顺序、回滚与 DB 约束（面向 Agent 与运维）。
 
 ## 文档一览
 
@@ -19,6 +20,7 @@
 | `templates/NEW_TOOL_AGENT_TEMPLATE.md` | 新工具需求模板 |
 | `MOS_TOOLBOX_REBUILD_BASELINE.md` | MOS 单工具重构范围与契约草案 |
 | `PORTABLE_PACKAGING_AGENT_RUNBOOK.md` | 便携打包作业手册 |
+| `RELEASE_RUNBOOK.md` | 生产/预发布发布流程、环境检查与冒烟 |
 | `REMOTE.md` | Git 远程仓库地址与推送 / 克隆命令 |
 
 ## 环境与数据库（避免歧义）
