@@ -1,0 +1,48 @@
+%% MOS综合工具箱 — 逻辑架构（可由 mermaid-cli 导出 PDF/PNG）
+flowchart TB
+  subgraph Browser["浏览器"]
+    U["用户"]
+  end
+
+  subgraph FE["前端 Vue 3 + Vite + Element Plus"]
+    R["Vue Router"]
+    D["Dashboard 壳"]
+    TD["ToolDetail 工具使用页"]
+    TM["ToolManage 工具管理页"]
+    REG["tools/registry.ts"]
+    APIF["api/*.ts → /api/v1"]
+  end
+
+  subgraph BE["后端 FastAPI"]
+    M["main.py\nCORS · 访问日志 · /static · SPA"]
+    AGG["api/v1 路由聚合"]
+    subgraph HostAPI["宿主 API"]
+      AU["auth"]
+      US["users"]
+      TL["tools 列表/详情/发版"]
+      PM["permissions"]
+      AD["admin"]
+    end
+    TC["tools_common\nensure_tool_access"]
+    subgraph Plugins["工具插件"]
+      P1["service_id_registry"]
+      P2["mos_integration_toolbox"]
+    end
+  end
+
+  PG[("PostgreSQL\nDATABASE_URL")]
+
+  U --> R
+  R --> D
+  R --> TD
+  R --> TM
+  TD --> REG
+  TM --> REG
+  APIF --> M
+  M --> AGG
+  AGG --> HostAPI
+  TL --> TC
+  TL --> Plugins
+  Plugins --> TC
+  HostAPI --> PG
+  Plugins --> PG

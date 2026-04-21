@@ -2,6 +2,60 @@
 
 统一壳层下的多工具 Web 平台：工具目录、授权、治理与使用记录；各工具以**插件**形式挂载 API 与前端面板（Vue 3 + FastAPI）。
 
+## 架构
+
+下图在 GitHub 网页上由 Mermaid 渲染；亦可使用仓库内导出的静态图或 PDF：`docs/architecture-diagram.png`（或 `.jpg`）、`docs/architecture-diagram.pdf`。可编辑源：`docs/architecture-diagram.mmd`。
+
+```mermaid
+flowchart TB
+  subgraph Browser["浏览器"]
+    U["用户"]
+  end
+
+  subgraph FE["前端 Vue 3 + Vite + Element Plus"]
+    R["Vue Router"]
+    D["Dashboard 壳"]
+    TD["ToolDetail 工具使用页"]
+    TM["ToolManage 工具管理页"]
+    REG["tools/registry.ts"]
+    APIF["api/*.ts → /api/v1"]
+  end
+
+  subgraph BE["后端 FastAPI"]
+    M["main.py\nCORS · 访问日志 · /static · SPA"]
+    AGG["api/v1 路由聚合"]
+    subgraph HostAPI["宿主 API"]
+      AU["auth"]
+      US["users"]
+      TL["tools 列表/详情/发版"]
+      PM["permissions"]
+      AD["admin"]
+    end
+    TC["tools_common\nensure_tool_access"]
+    subgraph Plugins["工具插件"]
+      P1["service_id_registry"]
+      P2["mos_integration_toolbox"]
+    end
+  end
+
+  PG[("PostgreSQL\nDATABASE_URL")]
+
+  U --> R
+  R --> D
+  R --> TD
+  R --> TM
+  TD --> REG
+  TM --> REG
+  APIF --> M
+  M --> AGG
+  AGG --> HostAPI
+  TL --> TC
+  TL --> Plugins
+  Plugins --> TC
+  HostAPI --> PG
+  Plugins --> PG
+```
+
 ## 快速开始（开发）
 
 **前置**：Node.js（前端）、Python 3（后端）；建议在 `backend` 下使用虚拟环境并安装 `requirements.txt`。
