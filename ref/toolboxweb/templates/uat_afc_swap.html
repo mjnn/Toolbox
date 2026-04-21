@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AFC车DP换件工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        input[type="text"], select {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71; /* 使用绿色作为下载按钮 */
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+            margin-top: 20px;
+            position: relative; /* 用于放置清除按钮 */
+        }
+        .error {
+            color: #e74c3c;
+            /* font-weight: bold; 注释掉，因为class直接加在父容器，message和data会使用 */
+        }
+        .success {
+            color: #2ecc71;
+            /* font-weight: bold; */
+        }
+        .validation-message {
+            color: #e74c3c;
+            font-size: 0.85em;
+            margin-top: -8px;
+            margin-bottom: 10px;
+            min-height: 1em; /* 确保占位，避免布局跳动 */
+        }
+        .output-clear-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            padding: 4px 8px;
+            font-size: 0.8em;
+            background-color: #ccc;
+            color: #333;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        .output-clear-btn:hover {
+            opacity: 1;
+            background-color: #bbb;
+        }
+        /* 新增：禁用状态下输入框样式 */
+        input[type="text"]:disabled, select:disabled {
+            background-color: #e9e9e9;
+            color: #999;
+            cursor: not-allowed;
+            border-color: #e0e0e0;
+        }
+        button:disabled {
+            background-color: #a0c4e4; /* softer disabled color for buttons */
+            cursor: not-allowed;
+        }
+        /* 针对输出区内部的 message 文本颜色 */
+        .output-message.success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        .output-message.error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>AFC车DP换件工具</h1>
+
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>换件数据输入</h2>
+            </div>
+
+            <form id="afcSwapForm">
+                <div class="input-group">
+                    <label for="project">项目:</label>
+                    <select id="project" name="project">
+                        <option value="">请选择项目</option>
+                        <option value="AF">AF</option>
+                        <option value="C">C</option>
+                    </select>
+                    <div id="project-validation" class="validation-message"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="vin">VIN <span style="color:red">*</span>:</label>
+                    <input type="text" id="vin" name="vin" placeholder="请输入17位大写字母和数字的VIN" maxlength="17" required>
+                    <div id="vin-validation" class="validation-message"></div>
+                </div>
+
+                <hr style="margin-top: 20px; margin-bottom: 20px; border: 0; border-top: 1px dashed #ccc;">
+
+                <!-- 所有字段都始终可见，通过 disabled 属性控制可填状态 -->
+                <div class="input-group">
+                    <label for="zxdsn">ZXD SN号:</label>
+                    <input type="text" id="zxdsn" name="zxdsn" placeholder="请输入16位大写字母和数字的ZXD SN号" maxlength="16" disabled>
+                    <div id="zxdsn-validation" class="validation-message"></div>
+                </div>
+                <div class="input-group">
+                    <label for="iamsn">IAM SN号:</label>
+                    <input type="text" id="iamsn" name="iamsn" placeholder="请输入16位大写字母和数字的IAM SN号" maxlength="16" disabled>
+                    <div id="iamsn-validation" class="validation-message"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="cduid">CDUID:</label>
+                    <input type="text" id="cduid" name="cduid" placeholder="请输入24位大写字母和数字的CDUID" maxlength="24" disabled>
+                    <div id="cduid-validation" class="validation-message"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="iccid">ICCID:</label>
+                    <input type="text" id="iccid" name="iccid" placeholder="请输入20位数字的ICCID" maxlength="20" disabled>
+                    <div id="iccid-validation" class="validation-message"></div>
+                </div>
+
+                <div class="input-group">
+                    <label for="msisdn">MSISDN:</label>
+                    <input type="text" id="msisdn" name="msisdn" placeholder="请输入149开头的11位数字的MSISDN" maxlength="11" disabled>
+                    <div id="msisdn-validation" class="validation-message"></div>
+                </div>
+
+                <div class="buttons">
+                    <button type="submit" id="submitBtn">提交</button>
+                    <button type="button" id="clearBtn" class="clear-btn">清空</button>
+                </div>
+            </form>
+
+            <div class="output-area" id="responseOutput">
+                <!-- 清空结果按钮会通过JS动态添加到这里 -->
+                <button class="output-clear-btn" style="display: none;">清空结果</button>
+                在此显示后端响应...
+            </div>
+        </div>
+
+        <div class="info">
+            请填写上述信息以进行AFC车DP换件操作。
+        </div>
+    </div>
+
+    <script>
+        const projectSelect = document.getElementById('project');
+        const vinInput = document.getElementById('vin');
+        const zxdsnInput = document.getElementById('zxdsn');
+        const iamsnInput = document.getElementById('iamsn');
+        const cduidInput = document.getElementById('cduid');
+        const iccidInput = document.getElementById('iccid');
+        const msisdnInput = document.getElementById('msisdn');
+
+        const afcSwapForm = document.getElementById('afcSwapForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const responseOutput = document.getElementById('responseOutput');
+        // Initial setup for outputClearBtn reference and listener is handled by outputClearHandler
+        let outputClearBtn = responseOutput.querySelector('.output-clear-btn');
+
+        // Validation message elements
+        const projectValidation = document.getElementById('project-validation');
+        const vinValidation = document.getElementById('vin-validation');
+        const zxdsnValidation = document.getElementById('zxdsn-validation');
+        const iamsnValidation = document.getElementById('iamsn-validation');
+        const cduidValidation = document.getElementById('cduid-validation');
+        const iccidValidation = document.getElementById('iccid-validation');
+        const msisdnValidation = document.getElementById('msisdn-validation');
+
+        // Regex for validations
+        const vinRegex = /^[A-Z0-9]{17}$/;
+        const snRegex = /^[A-Z0-9]{16}$/; // ZXD SN & IAM SN
+        const cduidRegex = /^[A-Z0-9]{24}$/;
+        const iccidRegex = /^\d{20}$/;
+        const msisdnRegex = /^149\d{8}$/;
+
+        function showValidationMessage(element, message) {
+            element.textContent = message;
+        }
+
+        // Helper to clear value and validation message
+        function clearField(inputElement, validationElement) {
+            inputElement.value = '';
+            showValidationMessage(validationElement, '');
+        }
+
+        // Validate generic input, returns true if valid or disabled/empty (and not required if empty)
+        function validateInput(inputElement, regex, messageElement, errorMessage) {
+            const value = inputElement.value.trim().toUpperCase();
+            inputElement.value = value; // Keep in uppercase
+
+            if (inputElement.disabled) {
+                showValidationMessage(messageElement, '');
+                return true; // Disabled fields are considered valid
+            }
+
+            if (inputElement.required && !value) {
+                showValidationMessage(messageElement, '此字段为必填项');
+                return false;
+            }
+
+            if (value && !regex.test(value)) {
+                showValidationMessage(messageElement, errorMessage);
+                return false;
+            } else {
+                showValidationMessage(messageElement, '');
+                return true;
+            }
+        }
+
+        function applyValidationEventListeners(inputElement, regex, messageElement, errorMessage) {
+            inputElement.addEventListener('input', () => {
+                inputElement.value = inputElement.value.toUpperCase(); // Ensure uppercase on input
+            });
+            inputElement.addEventListener('blur', () => {
+                validateInput(inputElement, regex, messageElement, errorMessage);
+            });
+        }
+
+        // Initialize general validations
+        applyValidationEventListeners(vinInput, vinRegex, vinValidation, 'VIN必须是17位大写字母和数字');
+        applyValidationEventListeners(zxdsnInput, snRegex, zxdsnValidation, 'ZXD SN号必须是16位大写字母和数字');
+        applyValidationEventListeners(iamsnInput, snRegex, iamsnValidation, 'IAM SN号必须是16位大写字母和数字');
+        applyValidationEventListeners(cduidInput, cduidRegex, cduidValidation, 'CDUID必须是24位大写字母和数字');
+        applyValidationEventListeners(iccidInput, iccidRegex, iccidValidation, 'ICCID必须是20位数字');
+        applyValidationEventListeners(msisdnInput, msisdnRegex, msisdnValidation, 'MSISDN必须是149开头的11位数字');
+
+
+        // Function to update field enablement based on project selection
+        function updateProjectSpecificFields() {
+            const selectedProject = projectSelect.value;
+
+            // Reset all conditional fields to disabled and clear values/validations first
+            const conditionalInputs = [zxdsnInput, iamsnInput, cduidInput];
+            const conditionalValidations = [zxdsnValidation, iamsnValidation, cduidValidation];
+
+            conditionalInputs.forEach((input, index) => {
+                input.disabled = true;
+                clearField(input, conditionalValidations[index]);
+            });
+
+            if (selectedProject === 'AF') {
+                zxdsnInput.disabled = false;
+                iamsnInput.disabled = false;
+            } else if (selectedProject === 'C') {
+                cduidInput.disabled = false;
+            }
+            showValidationMessage(projectValidation, ''); // Clear project validation if selected
+
+            updateICCIDMSISDNState(); // Update ICCID/MSISDN state after changing project
+        }
+
+        // Function to enable/disable ICCID and MSISDN based on IAM SN or CDUID
+        function updateICCIDMSISDNState() {
+            const selectedProject = projectSelect.value;
+            let enableICCIDMSISDN = false;
+
+            // ICCID/MSISDN only enabled if IAM SN or CDUID is filled AND currently enabled
+            if (selectedProject === 'AF' && !iamsnInput.disabled && iamsnInput.value.trim() !== '') {
+                enableICCIDMSISDN = true;
+            } else if (selectedProject === 'C' && !cduidInput.disabled && cduidInput.value.trim() !== '') {
+                enableICCIDMSISDN = true;
+            }
+
+            iccidInput.disabled = !enableICCIDMSISDN;
+            msisdnInput.disabled = !enableICCIDMSISDN;
+
+
+            // Clear values and validation if disabled again
+            if (!enableICCIDMSISDN) {
+                clearField(iccidInput, iccidValidation);
+                clearField(msisdnInput, msisdnValidation);
+            }
+        }
+
+        // Event listeners
+        projectSelect.addEventListener('change', updateProjectSpecificFields);
+        iamsnInput.addEventListener('input', updateICCIDMSISDNState);
+        cduidInput.addEventListener('input', updateICCIDMSISDNState);
+
+        clearBtn.addEventListener('click', () => {
+            afcSwapForm.reset(); // Reset form fields
+            // Clear all validation messages
+            document.querySelectorAll('.validation-message').forEach(el => el.textContent = '');
+            updateProjectSpecificFields(); // Reset conditional fields and ICCID/MSISDN state
+            responseOutput.innerHTML = `<button class="output-clear-btn" style="display: none;">清空结果</button>在此显示后端响应...`;
+            responseOutput.className = 'output-area'; // Reset styles
+            outputClearBtn = responseOutput.querySelector('.output-clear-btn'); // Re-get the button
+            outputClearBtn.addEventListener('click', outputClearHandler); // Re-apply event listeners
+            outputClearBtn.style.display = 'none'; // Hide clear button
+        });
+
+        // Handler for output clear button (defined separately to be reusable)
+        function outputClearHandler() {
+            responseOutput.innerHTML = `<button class="output-clear-btn">清空结果</button>在此显示后端响应...`;
+            responseOutput.className = 'output-area'; // Reset styles
+            outputClearBtn = responseOutput.querySelector('.output-clear-btn'); // Re-get the button
+            outputClearBtn.addEventListener('click', outputClearHandler); // Re-attach listener
+            // Ensure the button is hidden initially
+            outputClearBtn.style.display = 'none';
+        }
+        // Initially attach handler to the clear button in output, if it exists
+        if (outputClearBtn) {
+            outputClearBtn.addEventListener('click', outputClearHandler);
+        }
+
+        afcSwapForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // Prevent default form submission
+
+            let isValid = true;
+
+            // Validate project selection
+            if (!projectSelect.value) {
+                showValidationMessage(projectValidation, '请选择项目');
+                isValid = false;
+            } else {
+                showValidationMessage(projectValidation, '');
+            }
+
+            // Validate all currently enabled fields, vin is always required
+            isValid = validateInput(vinInput, vinRegex, vinValidation, 'VIN必须是17位大写字母和数字') && isValid;
+            isValid = validateInput(zxdsnInput, snRegex, zxdsnValidation, 'ZXD SN号必须是16位大写字母和数字') && isValid;
+            isValid = validateInput(iamsnInput, snRegex, iamsnValidation, 'IAM SN号必须是16位大写字母和数字') && isValid;
+            isValid = validateInput(cduidInput, cduidRegex, cduidValidation, 'CDUID必须是24位大写字母和数字') && isValid;
+            isValid = validateInput(iccidInput, iccidRegex, iccidValidation, 'ICCID必须是20位数字') && isValid;
+            isValid = validateInput(msisdnInput, msisdnRegex, msisdnValidation, 'MSISDN必须是149开头的11位数字') && isValid;
+
+            // Additional check for ICCID/MSISDN if IAM SN or CDUID is NOT filled but ICCID/MSISDN ARE filled
+            const selectedProject = projectSelect.value;
+            // Only validate if the required fields for ICCID/MSISDN enablement are themselves enabled
+            const iamsnRequiredForICCIDMSISDN = selectedProject === 'AF' && !iamsnInput.disabled;
+            const cduidRequiredForICCIDMSISDN = selectedProject === 'C' && !cduidInput.disabled;
+
+            if (iamsnRequiredForICCIDMSISDN && iamsnInput.value.trim() === '' && (iccidInput.value.trim() !== '' || msisdnInput.value.trim() !== '')) {
+                showValidationMessage(iamsnValidation, '填写ICCID/MSISDN时，IAM SN号为必填');
+                isValid = false;
+            }
+            if (cduidRequiredForICCIDMSISDN && cduidInput.value.trim() === '' && (iccidInput.value.trim() !== '' || msisdnInput.value.trim() !== '')) {
+                showValidationMessage(cduidValidation, '填写ICCID/MSISDN时，CDUID为必填');
+                isValid = false;
+            }
+
+
+            if (!isValid) {
+                // Simplified error message for form validation
+                displayResponse({ success: false, message: '请检查并更正所有输入错误.' });
+                return;
+            }
+
+            const formData = {
+                project: projectSelect.value,
+                vin: vinInput.value.trim(),
+                zxdsn: zxdsnInput.value.trim() || null,
+                iamsn: iamsnInput.value.trim() || null,
+                iccid: iccidInput.value.trim() || null,
+                msisdn: msisdnInput.value.trim() || null,
+                cduid: cduidInput.value.trim() || null,
+            };
+
+            // Remove null/empty fields not relevant to the selected project or optional fields not filled
+            // This ensures backend receives minimal and relevant data
+            if (formData.project === 'AF') {
+                delete formData.cduid;
+            } else if (formData.project === 'C') {
+                delete formData.zxdsn;
+                delete formData.iamsn;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = '提交中...';
+            // Reset output area before new request
+            responseOutput.innerHTML = `<button class="output-clear-btn" style="display: none;">清空结果</button><p>正在发送请求...</p>`;
+            responseOutput.className = 'output-area'; // Reset class (to remove error/success)
+            outputClearBtn = responseOutput.querySelector('.output-clear-btn'); // Re-get the new button
+            outputClearBtn.addEventListener('click', outputClearHandler); // Re-attach listener
+            outputClearBtn.style.display = 'none'; // Ensure hidden
+
+            try {
+                // Assuming Flask view function afc_swap is accessible at /afc_swap
+                const response = await fetch('{{url_for('afc_swap')}}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData),
+                });
+
+                const result = await response.json();
+                displayResponse(result); // Pass the entire result object
+
+            } catch (error) {
+                console.error('Fetch error:', error);
+                displayResponse({ success: false, message: '网络请求失败，请检查您的网络或联系管理员。' });
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '提交';
+                // Always show the clear button after a response (even if it's "正在发送请求...")
+                if (outputClearBtn) { // Check if outputClearBtn is correctly referenced
+                    outputClearBtn.style.display = 'inline-block';
+                }
+            }
+        });
+
+        // Modified displayResponse function to handle the new backend response format
+        function displayResponse(result) {
+            // First, re-initialize the output area with the clear button
+            responseOutput.innerHTML = `<button class="output-clear-btn">清空结果</button>`;
+            outputClearBtn = responseOutput.querySelector('.output-clear-btn'); // Make sure we have the latest button reference
+            if (outputClearBtn) {
+                outputClearBtn.addEventListener('click', outputClearHandler);
+                outputClearBtn.style.display = 'inline-block'; // Always show clear button after a response
+            }
+
+            // Clear previous success/error classes from the output container
+            responseOutput.classList.remove('success', 'error');
+
+            // Determine if the operation was successful based on 'success' field
+            const isSuccess = result.success === true; // Explicitly check for boolean true
+            const messageClass = isSuccess ? 'output-message success' : 'output-message error';
+
+            // Display the message first
+            let contentHtml = `<p class="${messageClass}">${result.message || '无消息'}</p>`;
+
+            // Then handle the 'data' part
+            const responseData = result.data;
+            if (responseData === null || responseData === undefined || responseData === '') {
+                // No data to display or data is an empty string/null
+                contentHtml += `<p style="color: grey; font-style: italic;">无详细数据。</p>`;
+            } else if (Array.isArray(responseData)) {
+                // If data is an array (assume array of objects for table)
+                if (responseData.length > 0) {
+                    let tableHtml = '<table class="result-table"><thead><tr>';
+                    // Get headers from the first object keys
+                    for (const key in responseData[0]) {
+                        tableHtml += `<th>${key}</th>`;
+                    }
+                    tableHtml += '</tr></thead><tbody>';
+
+                    // Add rows
+                    responseData.forEach(row => {
+                        tableHtml += '<tr>';
+                        for (const key in row) {
+                            tableHtml += `<td>${row[key]}</td>`;
+                        }
+                        tableHtml += '</tr>';
+                    });
+                    tableHtml += '</tbody></table>';
+                    contentHtml += tableHtml;
+                } else {
+                    contentHtml += `<p style="color: grey; font-style: italic;">返回数据为空。</p>`;
+                }
+            } else if (typeof responseData === 'object') {
+                // If data is a single object, display as key-value pairs table
+                let detailHtml = '<h3 style="margin-top:0;">详细信息:</h3><table class="result-table"><tbody>';
+                for (const key in responseData) {
+                    detailHtml += `<tr><th>${key}</th><td>${responseData[key]}</td></tr>`;
+                }
+                detailHtml += '</tbody></table>';
+                contentHtml += detailHtml;
+            } else {
+                // If data is a primitive type (e.g., string, number)
+                contentHtml += `<p>详细数据: <pre>${responseData}</pre></p>`;
+            }
+
+            // Append all generated content
+            responseOutput.innerHTML += contentHtml;
+        }
+
+
+        // Initial setup
+        updateProjectSpecificFields(); // Set initial state for fields
+    </script>
+</body>
+</html>

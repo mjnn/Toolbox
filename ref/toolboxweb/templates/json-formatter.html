@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON 格式化工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .tool-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .tool-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+            font-size: 1.3em;
+        }
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            font-size: 14px;
+            tab-size: 2;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .format-btn {
+            background-color: #2ecc71;
+        }
+        .format-btn:hover {
+            background-color: #27ae60;
+        }
+        .minify-btn {
+            background-color: #9b59b6;
+        }
+        .minify-btn:hover {
+            background-color: #8e44ad;
+        }
+        .copy-btn {
+            background-color: #e67e22;
+        }
+        .copy-btn:hover {
+            background-color: #d35400;
+        }
+        .download-btn {
+            background-color: #1abc9c;
+        }
+        .download-btn:hover {
+            background-color: #16a085;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .success {
+            color: #2ecc71;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .options {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #eee;
+        }
+        .option-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: inline-block;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        select, input[type="number"] {
+            padding: 5px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>JSON 格式化工具</h1>
+    
+    <div class="container">
+        <div class="tool-box">
+            <div class="tool-header">
+                <h2>JSON 输入</h2>
+            </div>
+            
+            <div class="options">
+                <div class="option-group">
+                    <label for="indentSize">缩进:</label>
+                    <select id="indentSize">
+                        <option value="2">2 空格</option>
+                        <option value="4" selected>4 空格</option>
+                        <option value="1">制表符</option>
+                    </select>
+                    
+                    <label for="quoteStyle" style="margin-left: 15px;">引号:</label>
+                    <select id="quoteStyle">
+                        <option value="double" selected>双引号</option>
+                        <option value="single">单引号</option>
+                    </select>
+                </div>
+            </div>
+            
+            <textarea id="jsonInput" placeholder='在此输入 JSON 字符串...'></textarea>
+            <div id="inputError" class="error"></div>
+            <div id="inputStatus" class="status"></div>
+            
+            <div class="buttons">
+                <button id="formatJson" class="format-btn">格式化</button>
+                <button id="minifyJson" class="minify-btn">压缩</button>
+                <button id="validateJson">验证</button>
+                <button class="clear-btn" id="clearJson">清空</button>
+            </div>
+        </div>
+        
+        <div class="tool-box">
+            <div class="tool-header">
+                <h2>格式化结果</h2>
+                <div>
+                    <button id="copyJson" class="copy-btn">复制</button>
+                    <button id="downloadJson" class="download-btn">下载</button>
+                </div>
+            </div>
+            <textarea id="jsonOutput" readonly placeholder='格式化后的 JSON 将显示在这里...'></textarea>
+            <div id="outputError" class="error"></div>
+            <div id="outputStatus" class="status"></div>
+        </div>
+    </div>
+    
+    <div class="info">
+        <p><strong>使用说明：</strong></p>
+        <ol>
+            <li>在输入框中粘贴或输入 JSON 字符串</li>
+            <li>点击"格式化"按钮美化 JSON（添加缩进和换行）</li>
+            <li>点击"压缩"按钮去除所有不必要的空格和换行</li>
+            <li>点击"验证"按钮检查 JSON 是否有效</li>
+            <li>使用"复制"按钮复制格式化结果，或"下载"保存为文件</li>
+            <li>可以在选项中选择缩进大小和引号样式</li>
+        </ol>
+        <p><strong>JSON 示例：</strong></p>
+        <pre style="background: #f8f9fa; padding: 10px; border-radius: 4px;">{"name":"John","age":30,"cars":["Ford","BMW","Fiat"]}</pre>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 获取DOM元素
+            const jsonInput = document.getElementById('jsonInput');
+            const jsonOutput = document.getElementById('jsonOutput');
+            const formatBtn = document.getElementById('formatJson');
+            const minifyBtn = document.getElementById('minifyJson');
+            const validateBtn = document.getElementById('validateJson');
+            const copyBtn = document.getElementById('copyJson');
+            const downloadBtn = document.getElementById('downloadJson');
+            const clearBtn = document.getElementById('clearJson');
+            const inputError = document.getElementById('inputError');
+            const outputError = document.getElementById('outputError');
+            const inputStatus = document.getElementById('inputStatus');
+            const outputStatus = document.getElementById('outputStatus');
+            const indentSize = document.getElementById('indentSize');
+            const quoteStyle = document.getElementById('quoteStyle');
+            
+            // 格式化JSON
+            formatBtn.addEventListener('click', function() {
+                try {
+                    const jsonString = jsonInput.value.trim();
+                    if (!jsonString) {
+                        inputError.textContent = '请输入 JSON 字符串';
+                        return;
+                    }
+                    
+                    // 解析JSON
+                    const jsonObj = JSON.parse(jsonString);
+                    
+                    // 获取格式化选项
+                    let indent;
+                    if (indentSize.value === '1') {
+                        indent = '\t'; // 制表符
+                    } else {
+                        indent = parseInt(indentSize.value);
+                    }
+                    
+                    // 格式化JSON
+                    let formattedJson;
+                    if (quoteStyle.value === 'single') {
+                        // 替换双引号为单引号
+                        formattedJson = JSON.stringify(jsonObj, null, indent)
+                            .replace(/"([^"]+)":/g, "'$1':")
+                            .replace(/"([^"]+)"/g, "'$1'");
+                    } else {
+                        formattedJson = JSON.stringify(jsonObj, null, indent);
+                    }
+                    
+                    // 显示结果
+                    jsonOutput.value = formattedJson;
+                    inputError.textContent = '';
+                    outputError.textContent = '';
+                    outputStatus.textContent = 'JSON 格式化成功';
+                    outputStatus.className = 'status success';
+                } catch (error) {
+                    outputError.textContent = `格式化错误: ${error.message}`;
+                    outputStatus.textContent = '格式化失败';
+                    outputStatus.className = 'status error';
+                    console.error(error);
+                }
+            });
+            
+            // 压缩JSON
+            minifyBtn.addEventListener('click', function() {
+                try {
+                    const jsonString = jsonInput.value.trim();
+                    if (!jsonString) {
+                        inputError.textContent = '请输入 JSON 字符串';
+                        return;
+                    }
+                    
+                    // 解析JSON
+                    const jsonObj = JSON.parse(jsonString);
+                    
+                    // 压缩JSON
+                    let minifiedJson;
+                    if (quoteStyle.value === 'single') {
+                        // 替换双引号为单引号
+                        minifiedJson = JSON.stringify(jsonObj)
+                            .replace(/"([^"]+)":/g, "'$1':")
+                            .replace(/"([^"]+)"/g, "'$1'");
+                    } else {
+                        minifiedJson = JSON.stringify(jsonObj);
+                    }
+                    
+                    // 显示结果
+                    jsonOutput.value = minifiedJson;
+                    inputError.textContent = '';
+                    outputError.textContent = '';
+                    outputStatus.textContent = 'JSON 压缩成功';
+                    outputStatus.className = 'status success';
+                } catch (error) {
+                    outputError.textContent = `压缩错误: ${error.message}`;
+                    outputStatus.textContent = '压缩失败';
+                    outputStatus.className = 'status error';
+                    console.error(error);
+                }
+            });
+            
+            // 验证JSON
+            validateBtn.addEventListener('click', function() {
+                try {
+                    const jsonString = jsonInput.value.trim();
+                    if (!jsonString) {
+                        inputError.textContent = '请输入 JSON 字符串';
+                        return;
+                    }
+                    
+                    // 解析JSON
+                    JSON.parse(jsonString);
+                    
+                    // 显示结果
+                    inputError.textContent = '';
+                    inputStatus.textContent = 'JSON 验证成功 - 有效';
+                    inputStatus.className = 'status success';
+                } catch (error) {
+                    inputError.textContent = `验证错误: ${error.message}`;
+                    inputStatus.textContent = 'JSON 验证失败 - 无效';
+                    inputStatus.className = 'status error';
+                    console.error(error);
+                }
+            });
+            
+            // 复制JSON
+            copyBtn.addEventListener('click', function() {
+                const outputText = jsonOutput.value;
+                if (!outputText) {
+                    outputError.textContent = '没有可复制的内容';
+                    return;
+                }
+                
+                navigator.clipboard.writeText(outputText).then(function() {
+                    outputStatus.textContent = '已复制到剪贴板';
+                    outputStatus.className = 'status success';
+                    
+                    // 3秒后清除状态
+                    setTimeout(function() {
+                        outputStatus.textContent = '';
+                    }, 3000);
+                }).catch(function(err) {
+                    outputError.textContent = '复制失败，请手动选择并复制';
+                    console.error('复制失败: ', err);
+                });
+            });
+            
+            // 下载JSON
+            downloadBtn.addEventListener('click', function() {
+                const outputText = jsonOutput.value;
+                if (!outputText) {
+                    outputError.textContent = '没有可下载的内容';
+                    return;
+                }
+                
+                try {
+                    const blob = new Blob([outputText], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'formatted.json';
+                    
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    outputStatus.textContent = 'JSON 文件已下载';
+                    outputStatus.className = 'status success';
+                    
+                    // 3秒后清除状态
+                    setTimeout(function() {
+                        outputStatus.textContent = '';
+                    }, 3000);
+                } catch (error) {
+                    outputError.textContent = `下载失败: ${error.message}`;
+                    console.error(error);
+                }
+            });
+            
+            // 清空输入
+            clearBtn.addEventListener('click', function() {
+                jsonInput.value = '';
+                jsonOutput.value = '';
+                inputError.textContent = '';
+                outputError.textContent = '';
+                inputStatus.textContent = '';
+                outputStatus.textContent = '';
+            });
+        });
+    </script>
+</body>
+</html>

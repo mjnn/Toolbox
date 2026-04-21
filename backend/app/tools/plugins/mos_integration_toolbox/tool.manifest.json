@@ -1,0 +1,49 @@
+{
+  "$schema": "../../../../../contracts/tool.manifest.schema.json",
+  "tool_key": "mos-integration-toolbox",
+  "display_name": "MOS 集成工具箱",
+  "feature_slugs": [
+    "x509-cert",
+    "token-preload",
+    "token-preload/visibility",
+    "sim-query",
+    "uat-af-dp-query",
+    "uat-sp-query",
+    "uat-vehicle-import",
+    "uat-vehicle-config-generate",
+    "uat-vehicle-config-rules",
+    "announcement-feed",
+    "mos-manage/announcements",
+    "mos-manage/vehicle-rules",
+    "mos-manage/vehicle-rules/bulk-import",
+    "mos-manage/runtime-credentials",
+    "mos-manage/change-logs"
+  ],
+  "behavior_catalog": [
+    { "key": "x509-cert", "label": "IAM X509（查询 / 签发 / CSR与证书解析）" },
+    { "key": "token-preload", "label": "Token 预加载（Zone/SP/VMP）" },
+    { "key": "token-preload/visibility", "label": "Token 预加载可见性检查" },
+    { "key": "sim-query", "label": "SIM 卡信息查询" },
+    { "key": "uat-af-dp-query", "label": "UAT AF DP 数据查询" },
+    { "key": "uat-sp-query", "label": "UAT SP 后台信息查询" },
+    { "key": "uat-vehicle-import", "label": "UAT 车辆配置导入" },
+    { "key": "uat-vehicle-config-generate", "label": "UAT 车辆配置规则生成" },
+    { "key": "uat-vehicle-config-rules", "label": "UAT 车辆配置规则列表" },
+    { "key": "announcement-feed", "label": "系统公告查看" },
+    { "key": "mos-manage/announcements", "label": "MOS 管理：公告发布与维护" },
+    { "key": "mos-manage/vehicle-rules/bulk-import", "label": "MOS 管理：车辆规则批量导入" },
+    { "key": "mos-manage/vehicle-rules", "label": "MOS 管理：车辆规则" },
+    { "key": "mos-manage/runtime-credentials", "label": "MOS 管理：运行环境凭据" },
+    { "key": "mos-manage/change-logs", "label": "MOS 管理：配置变更记录" }
+  ],
+  "frontend": {
+    "detail_panel_module": "MosIntegrationToolboxPanel",
+    "manage_tab_modules": [
+      {
+        "name": "mos-toolbox-manage",
+        "label": "MOS 工具配置",
+        "module": "MosIntegrationToolboxManageTab"
+      }
+    ]
+  }
+}

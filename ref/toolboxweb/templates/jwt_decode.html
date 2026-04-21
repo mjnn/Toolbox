@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JWT 解析工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .jwt-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .jwt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .result-container {
+            margin-top: 20px;
+        }
+        .result-section {
+            margin-bottom: 20px;
+        }
+        .result-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+        .result-content {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+            overflow-x: auto;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+        .copy-btn {
+            background-color: #9b59b6;
+            margin-left: 10px;
+        }
+        .copy-btn:hover {
+            background-color: #8e44ad;
+        }
+    </style>
+</head>
+<body>
+    <h1>JWT 解析工具</h1>
+    
+    <div class="container">
+        <div class="jwt-box">
+            <div class="jwt-header">
+                <h2>JWT 输入</h2>
+            </div>
+            <textarea id="jwtInput" placeholder="在此输入 JWT 令牌..."></textarea>
+            <div id="jwtError" class="error"></div>
+            <div class="buttons">
+                <button id="parseJwt">解析 JWT</button>
+                <button class="clear-btn" id="clearBtn">清空</button>
+            </div>
+        </div>
+        
+        <div class="jwt-box">
+            <div class="jwt-header">
+                <h2>解析结果</h2>
+            </div>
+            <div id="resultContainer" class="result-container">
+                <div class="result-section">
+                    <div class="result-title">
+                        JWT 原始结构
+                        <button class="copy-btn" onclick="copyToClipboard('rawJwt')">复制</button>
+                    </div>
+                    <div id="rawJwt" class="result-content">
+                        <pre>等待解析...</pre>
+                    </div>
+                </div>
+                
+                <div class="result-section">
+                    <div class="result-title">
+                        头部 (Header)
+                        <button class="copy-btn" onclick="copyToClipboard('headerResult')">复制</button>
+                    </div>
+                    <div id="headerResult" class="result-content">
+                        <pre>等待解析...</pre>
+                    </div>
+                </div>
+                
+                <div class="result-section">
+                    <div class="result-title">
+                        载荷 (Payload)
+                        <button class="copy-btn" onclick="copyToClipboard('payloadResult')">复制</button>
+                    </div>
+                    <div id="payloadResult" class="result-content">
+                        <pre>等待解析...</pre>
+                    </div>
+                </div>
+                
+                <div class="result-section">
+                    <div class="result-title">
+                        签名 (Signature)
+                        <button class="copy-btn" onclick="copyToClipboard('signatureResult')">复制</button>
+                    </div>
+                    <div id="signatureResult" class="result-content">
+                        <pre>等待解析...</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info">
+        <p><strong>使用说明：</strong></p>
+        <ul>
+            <li>在上方文本框输入 JWT 令牌（格式为 xxxxx.yyyyy.zzzzz）</li>
+            <li>点击"解析 JWT"按钮解析令牌</li>
+            <li>解析结果将显示在下方，包括头部、载荷和签名</li>
+            <li>点击"复制"按钮可以复制各部分内容</li>
+            <li>点击"清空"按钮可以清空所有内容</li>
+        </ul>
+        <p><strong>注意：</strong>此工具仅用于解析 JWT，不会验证签名有效性。</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const jwtInput = document.getElementById('jwtInput');
+            const parseJwtBtn = document.getElementById('parseJwt');
+            const clearBtn = document.getElementById('clearBtn');
+            const jwtError = document.getElementById('jwtError');
+            const rawJwtElement = document.getElementById('rawJwt');
+            const headerResult = document.getElementById('headerResult');
+            const payloadResult = document.getElementById('payloadResult');
+            const signatureResult = document.getElementById('signatureResult');
+            
+            // 解析JWT
+            parseJwtBtn.addEventListener('click', function() {
+                const jwt = jwtInput.value.trim();
+                if (!jwt) {
+                    jwtError.textContent = '请输入 JWT 令牌';
+                    return;
+                }
+                
+                try {
+                    // 分割JWT的三个部分
+                    const parts = jwt.split('.');
+                    if (parts.length !== 3) {
+                        throw new Error('无效的 JWT 格式，应包含三部分用点分隔');
+                    }
+                    
+                    const [headerBase64, payloadBase64, signature] = parts;
+                    
+                    // 解码头部
+                    const header = decodeBase64Url(headerBase64);
+                    const headerObj = JSON.parse(header);
+                    
+                    // 解码载荷
+                    const payload = decodeBase64Url(payloadBase64);
+                    const payloadObj = JSON.parse(payload);
+                    
+                    // 更新UI显示结果
+                    rawJwtElement.innerHTML = `<pre>${formatJwtParts(jwt)}</pre>`;
+                    headerResult.innerHTML = `<pre>${JSON.stringify(headerObj, null, 2)}</pre>`;
+                    payloadResult.innerHTML = `<pre>${JSON.stringify(payloadObj, null, 2)}</pre>`;
+                    signatureResult.innerHTML = `<pre>${signature}</pre>`;
+                    
+                    jwtError.textContent = '';
+                } catch (error) {
+                    jwtError.textContent = `解析错误: ${error.message}`;
+                    console.error(error);
+                }
+            });
+            
+            // 清空内容
+            clearBtn.addEventListener('click', function() {
+                jwtInput.value = '';
+                rawJwtElement.innerHTML = '<pre>等待解析...</pre>';
+                headerResult.innerHTML = '<pre>等待解析...</pre>';
+                payloadResult.innerHTML = '<pre>等待解析...</pre>';
+                signatureResult.innerHTML = '<pre>等待解析...</pre>';
+                jwtError.textContent = '';
+            });
+            
+            // 解码Base64Url
+            function decodeBase64Url(base64Url) {
+                // 将Base64Url转换为Base64
+                let base64 = base64Url
+                    .replace(/-/g, '+')
+                    .replace(/_/g, '/');
+                
+                // 补全Base64末尾的等号
+                const padLength = 4 - (base64.length % 4);
+                if (padLength < 4) {
+                    base64 += '='.repeat(padLength);
+                }
+                
+                // 解码为字符串
+                return decodeURIComponent(atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            }
+            
+            // 格式化JWT各部分显示
+            function formatJwtParts(jwt) {
+                const parts = jwt.split('.');
+                if (parts.length !== 3) return jwt;
+                
+                return [
+                    `HEADER:    ${parts[0]}`,
+                    `PAYLOAD:   ${parts[1]}`,
+                    `SIGNATURE: ${parts[2]}`
+                ].join('\n\n');
+            }
+        });
+        
+        // 复制到剪贴板
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent || element.innerText;
+            
+            navigator.clipboard.writeText(text.trim()).then(function() {
+                // 显示复制成功的反馈
+                const originalText = element.querySelector('button').textContent;
+                element.querySelector('button').textContent = '已复制!';
+                
+                setTimeout(function() {
+                    element.querySelector('button').textContent = originalText;
+                }, 2000);
+            }).catch(function(err) {
+                console.error('复制失败: ', err);
+            });
+        }
+    </script>
+</body>
+</html>

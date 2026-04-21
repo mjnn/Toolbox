@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIM卡信息查询</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover:not(:disabled) { /* 禁用时没有hover效果 */
+            background-color: #2980b9;
+        }
+        button:disabled { /* 禁用按钮样式 */
+            background-color: #a4d2ed;
+            cursor: not-allowed;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover:not(:disabled) {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71; /* 使用绿色作为下载按钮 */
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 50px; /* 调整高度以适应短消息 */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+            margin-top: 15px; /* 添加上边距 */
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        /* 新增加载提示样式 */
+        .loading-message {
+            color: #3498db; /* 蓝色 */
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SIM卡信息查询工具</h1>
+
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>查询SIM卡信息</h2>
+            </div>
+
+            <div class="input-group">
+                <label for="simIdInput">输入SIM卡标识 (ICCID, MSISDN 或 IMSI):</label>
+                <input type="text" id="simIdInput" placeholder="请输入ICCID, MSISDN 或 IMSI">
+            </div>
+
+            <div class="buttons">
+                <button type="button" id="searchButton">查询</button>
+                <button type="button" id="clearButton" class="clear-btn">清空</button>
+            </div>
+
+            <div id="messageArea" class="output-area" style="display: none;">
+                <!-- 消息、错误或加载提示将显示在这里 -->
+            </div>
+
+            <div id="resultTableContainer" style="display: none;">
+                <h3>查询结果：</h3>
+                <table class="result-table">
+                    <thead>
+                        <tr>
+                            <th>字段</th>
+                            <th>值</th>
+                        </tr>
+                    </thead>
+                    <tbody id="simInfoBody">
+                        <!-- SIM卡信息将动态插入这里 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="info">
+                根据您输入的字符串格式自动判断是ICCID、MSISDN还是IMSI。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Flask 后端接口地址，通过 Jinja2 模板渲染
+        // 注意：视图函数名称已修改为 'search_afc_sim_info'
+        const API_URL = "{{ url_for('search_afc_sim_info') }}"; 
+
+        const simIdInput = document.getElementById('simIdInput');
+        const searchButton = document.getElementById('searchButton');
+        const clearButton = document.getElementById('clearButton');
+        const messageArea = document.getElementById('messageArea');
+        const resultTableContainer = document.getElementById('resultTableContainer');
+        const simInfoBody = document.getElementById('simInfoBody');
+
+        // 清空所有输入框和结果显示区域
+        function clearAll() {
+            simIdInput.value = '';
+            clearOutputAreas();
+        }
+
+        // 清空结果显示区域，不触碰输入框
+        function clearOutputAreas() {
+            messageArea.style.display = 'none';
+            messageArea.textContent = '';
+            // 移除所有可能存在的特定状态类
+            messageArea.classList.remove('success', 'error', 'loading-message'); 
+            resultTableContainer.style.display = 'none';
+            simInfoBody.innerHTML = '';
+        }
+
+        /**
+         * 显示消息 (成功、错误、信息或加载)
+         * @param {string} message 要显示的消息内容
+         * @param {'success'|'error'|'loading'|'info'} type 消息类型，默认为'info'
+         */
+        function displayMessage(message, type = 'info') {
+            clearOutputAreas(); // 清空之前的所有输出，包括样式
+            messageArea.style.display = 'block';
+            messageArea.textContent = message;
+            
+            // 根据类型添加相应的CSS类
+            if (type === 'success') {
+                messageArea.classList.add('success');
+            } else if (type === 'error') {
+                messageArea.classList.add('error');
+            } else if (type === 'loading') {
+                messageArea.classList.add('loading-message');
+            }
+            // 'info' 类型则不需要额外添加类，保持默认样式即可 
+        }
+
+        // 显示SIM卡信息表格
+        function displaySimInfoTable(data) {
+            clearOutputAreas(); // 清空之前的所有输出
+            if (!data || Object.keys(data).length === 0) {
+                displayMessage("未找到相关SIM卡信息或返回数据为空。", false);
+                return;
+            }
+
+            resultTableContainer.style.display = 'block';
+            simInfoBody.innerHTML = ''; // 清空旧数据
+
+            // 定义表格显示字段的顺序，优先显示这些字段
+            const fieldsOrder = ['iccid', 'msisdn', 'imsi']; 
+            
+            // 收集所有唯一的键，并优先按 fieldsOrder 排序
+            const allKeys = new Set(Object.keys(data));
+            const sortedKeys = [...fieldsOrder.filter(key => allKeys.has(key)), ...Array.from(allKeys).filter(key => !fieldsOrder.includes(key))];
+            
+            sortedKeys.forEach(key => {
+                const row = simInfoBody.insertRow();
+                const cellKey = row.insertCell();
+                const cellValue = row.insertCell();
+                cellKey.textContent = key.toUpperCase();
+                cellValue.textContent = data[key] === null || data[key] === undefined ? 'N/A' : data[key];
+            });
+        }
+
+        /**
+         * 智能判断输入字符串是 ICCID, MSISDN 还是 IMSI。
+         *
+         * @param {string} inputStr 用户输入的值
+         * @returns {object|null} 包含识别到的类型和值的对象 (e.g., { type: 'iccid', value: '...' })，如果无法识别则返回 null。
+         */
+        function detectSimIdentifierType(inputStr) {
+            const cleanStr = inputStr.replace(/\s/g, ''); // 移除空格，保留其他非数字字符，因为ICCID可能包含字母
+            // 如果只允许数字，可以使用 replace(/[^0-9]/g, '')
+            if (!cleanStr) {
+                return null;
+            }
+
+            // ICCID通常是19或20位，以'89'开头 (国际识别码)
+            if ((cleanStr.length === 19 || cleanStr.length === 20) && cleanStr.startsWith('89')) {
+                return { type: 'iccid', value: cleanStr };
+            }
+            // MSISDN (手机号) 中国地区通常是11位数字，以'1'开头
+            if (cleanStr.length === 11 && cleanStr.startsWith('1') && /^\d+$/.test(cleanStr)) {
+                return { type: 'msisdn', value: cleanStr };
+            }
+            // IMSI通常是15位数字，以'460'开头 (中国移动国家码+网络码)
+            if (cleanStr.length === 15 && cleanStr.startsWith('460') && /^\d+$/.test(cleanStr)) {
+                return { type: 'imsi', value: cleanStr };
+            }
+
+            // 兜底逻辑：如果上述都不匹配，但看起来像ICCID (比如长度在15-22之间，包含数字)，先按ICCID尝试
+            // 或直接提示无法识别
+            if (cleanStr.length >= 15 && cleanStr.length <= 22) {
+                 return { type: 'iccid', value: cleanStr }; // 尝试作为ICCID发送
+            }
+
+            return null; // 无法识别
+        }
+
+        // 搜索按钮点击事件
+        searchButton.addEventListener('click', async () => {
+            clearOutputAreas(); // 每次搜索前清空之前的显示
+
+            const inputValue = simIdInput.value.trim();
+            if (!inputValue) {
+                displayMessage("请输入需要查询的SIM卡标识 (ICCID, MSISDN 或 IMSI)！", 'error');
+                return;
+            }
+
+            const identified = detectSimIdentifierType(inputValue);
+
+            if (!identified) {
+                displayMessage("无法识别输入的SIM卡标识类型。请检查格式是否正确。", 'error');
+                return;
+            }
+
+            // 构建请求 payload，只包含识别到的参数，其他为 null
+            const payload = {
+                iccid: null,
+                msisdn: null,
+                imsi: null
+            };
+            payload[identified.type] = identified.value;
+
+            console.log("Sending payload:", payload); // 调试用
+            
+            // 显示加载提示，并禁用按钮
+            displayMessage('正在查询，请稍候...', 'loading');
+            searchButton.disabled = true;
+            clearButton.disabled = true;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                // 即使HTTP状态码不是200，也尝试解析JSON来获取后端错误信息
+                const result = await response.json();
+                console.log("Received response:", result); // 调试用
+
+                if (result.success) {
+                    if (result.data) {
+                        displayMessage(result.message || `通过 ${identified.type.toUpperCase()} 查询成功！`, 'success');
+                        // 你的后端返回的data需要是实际的JSON对象，而不是字符串化后的JSON。
+                        // 如果后端返回的是字符串化的JSON (例如: {"data": "{\"iccid\":\"...\"}"})
+                        // 那么你需要在这里进行 JSON.parse(result.data)
+                        // 目前示例Flask代码直接返回JSON对象，所以此处无需parse
+                        displaySimInfoTable(result.data);
+                    } else {
+                        displayMessage(result.message || "查询成功，但未找到匹配的SIM卡信息。", 'info'); // 这种情况下可以认为是信息提示
+                    }
+                } else {
+                    displayMessage(result.message || (result.data ? result.data : "查询失败，未知错误。"), 'error');
+                }
+            } catch (error) {
+                console.error('Error fetching SIM data:', error);
+                displayMessage(`请求出错: ${error.message || '网络或服务器错误'}`, 'error');
+            } finally {
+                // 无论成功或失败，最后都要重新启用按钮
+                searchButton.disabled = false;
+                clearButton.disabled = false;
+            }
+        });
+
+        // 清空按钮点击事件
+        clearButton.addEventListener('click', clearAll);
+
+        // 页面加载时清空所有可能存在的旧数据或预填内容
+        document.addEventListener('DOMContentLoaded', clearAll);
+    </script>
+</body>
+</html>

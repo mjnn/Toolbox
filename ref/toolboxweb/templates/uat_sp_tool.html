@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>后台信息查询工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        /* 新增样式：针对文件输入框 */
+        input[type="file"] {
+             width: 100%; /* 确保文件输入框宽度适应父容器 */
+             padding: 8px 0; /* 适当的垂直填充 */
+             margin-bottom: 10px;
+             border: 1px solid #ddd; /* 给文件输入框一个边框 */
+             border-radius: 4px;
+             box-sizing: border-box;
+             background-color: #f9f9f9; /* 背景色 */
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71; /* 使用绿色作为下载按钮 */
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>后台信息查询工具</h1>
+
+    <div class="container">
+        <!-- 1. 人车关系绑定 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>人车关系绑定</h2>
+            </div>
+            <div class="input-group">
+                <label for="bindVin">VIN (车架号):</label>
+                <input type="text" id="bindVin" placeholder="请输入车辆VIN号">
+            </div>
+            <div class="input-group">
+                <label for="bindPhone">主账号手机号:</label>
+                <input type="text" id="bindPhone" placeholder="请输入主账号手机号码">
+            </div>
+            <div class="buttons">
+                <button onclick="bindPersonCar()">执行绑定</button>
+                <button class="clear-btn" onclick="clearOutput('bindOutput')">清空</button>
+            </div>
+            <p><strong>返回结果:</strong></p>
+            <div id="bindOutput" class="output-area">等待操作...</div>
+        </div>
+
+        <!-- 2. 人车关系解绑 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>人车关系解绑</h2>
+            </div>
+            <div class="input-group">
+                <label for="unbindVin">VIN (车架号):</label>
+                <input type="text" id="unbindVin" placeholder="请输入车辆VIN号">
+            </div>
+            <div class="buttons">
+                <button onclick="unbindPersonCar()">执行解绑</button>
+                <button class="clear-btn" onclick="clearOutput('unbindOutput')">清空</button>
+            </div>
+            <p><strong>返回结果:</strong></p>
+            <div id="unbindOutput" class="output-area">等待操作...</div>
+        </div>
+
+        <!-- 3. 车机换件 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>车机换件</h2>
+            </div>
+            <div class="input-group">
+                <label for="replaceVin">VIN (车架号):</label>
+                <input type="text" id="replaceVin" placeholder="请输入车辆VIN号">
+            </div>
+            <div class="input-group">
+                <label for="newSn">新车机SN号:</label>
+                <input type="text" id="newSn" placeholder="请输入新车机SN号">
+            </div>
+            <div class="buttons">
+                <button onclick="replaceCarMachine()">执行换件</button>
+                <button class="clear-btn" onclick="clearOutput('replaceOutput')">清空</button>
+            </div>
+            <p><strong>返回结果:</strong></p>
+            <div id="replaceOutput" class="output-area">等待操作...</div>
+        </div>
+
+        <!-- 4. 车辆数据查询 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>车辆数据查询</h2>
+            </div>
+            <div class="input-group">
+                <label for="vehiclequeryVin">VIN (车架号):</label>
+                <input type="text" id="vehiclequeryVin" placeholder="请输入车辆VIN号">
+            </div>
+            <div class="buttons">
+                <button onclick="queryVehicleData()">查询数据</button>
+                <button class="clear-btn" onclick="clearOutput('queryOutput')">清空</button>
+            </div>
+            <p><strong>返回结果:</strong></p>
+            <div id="queryOutput" class="output-area">等待查询...</div>
+        </div>
+
+        <!-- 5. 后台Service List查询 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>后台Service List查询</h2>
+            </div>
+             <div class="input-group">
+                <label for="slqueryVin">VIN (车架号):</label>
+                <input type="text" id="slqueryVin" placeholder="请输入车辆VIN号">
+            </div>
+            <div class="buttons">
+                <button onclick="queryServiceList()">查询Service List</button>
+                <button class="clear-btn" onclick="clearOutput('serviceListOutput')">清空</button>
+            </div>
+            <p><strong>返回结果:</strong></p>
+            <div id="serviceListOutput" class="output-area">
+                等待查询...
+            </div>
+        </div>
+
+        <!-- 新增模块：6. 车辆主数据导入 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>车辆主数据导入</h2>
+            </div>
+            <div class="input-group">
+                <label for="masterDataFile">选择绑车信息模板Excel:</label>
+                <input type="file" id="masterDataFile" accept=".xls,.xlsx">
+            </div>
+            <div class="buttons">
+                <button onclick="uploadMasterData()">上传文件</button>
+                <button class="clear-btn" onclick="clearOutput('masterDataOutput')">清空</button>
+            </div>
+            <p><strong>导入结果:</strong></p>
+            <div id="masterDataOutput" class="output-area">等待导入...</div>
+        </div>
+        <!-- 新增模块结束 -->
+
+    </div>
+
+    <div class="info">
+        <p>&copy; 2025 后台信息查询工具. by MaJienuona.</p>
+    </div>
+
+    <script>
+        // 通过 Flask 的 Jinja2 模板引擎注入 API URL
+        const API_URLS = {
+            bind: "{{ bind_url }}",
+            unbind: "{{ unbind_url }}",
+            replace: "{{ replace_url }}",
+            queryVehicle: "{{ query_vehicle_url }}",
+            queryServiceList: "{{ query_service_url }}",
+            // 新增：车辆主数据导入的API URL
+            uploadMasterData: "{{ upload_master_data_url }}"
+        };
+
+
+        // 清空输出区域
+        function clearOutput(outputId) {
+            const outputElement = document.getElementById(outputId);
+            if (outputElement) {
+                outputElement.innerHTML = '等待操作...';
+            }
+        }
+
+        // 辅助函数：发送 POST 请求 (针对JSON数据)
+        async function postJson(url, data, outputElement) {
+            outputElement.innerHTML = '正在处理，请稍候...';
+            outputElement.className = 'output-area'; // Reset class
+
+
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json(); // 假设后端返回JSON
+                if (response.status==200) {
+                    outputElement.innerHTML = `<span class="success">成功: ${result.message || JSON.stringify(result)}</span>`;
+                } else {
+                    outputElement.innerHTML = `<span class="error">失败 (${response.status}): ${result.message || JSON.stringify(result)}</span>`;
+                }
+            } catch (error) {
+                console.error('Network or Parse error:', error);
+                outputElement.innerHTML = `<span class="error">请求失败: ${error.message}</span>`;
+            }
+        }
+
+        // 1. 人车关系绑定
+        async function bindPersonCar() {
+            const vin = document.getElementById('bindVin').value.trim();
+            const phone = document.getElementById('bindPhone').value.trim();
+            const outputElement = document.getElementById('bindOutput');
+
+            if (!vin || !phone) {
+                outputElement.innerHTML = '<span class="error">VIN和手机号不能为空！</span>';
+                return;
+            }
+            await postJson(API_URLS.bind, { vin, phone }, outputElement);
+        }
+
+        // 2. 人车关系解绑
+        async function unbindPersonCar() {
+            const vin = document.getElementById('unbindVin').value.trim();
+            const outputElement = document.getElementById('unbindOutput');
+
+            if (!vin) {
+                outputElement.innerHTML = '<span class="error">VIN不能为空！</span>';
+                return;
+            }
+            await postJson(API_URLS.unbind, { vin }, outputElement);
+        }
+
+        // 3. 车机换件
+        async function replaceCarMachine() {
+            const vin = document.getElementById('replaceVin').value.trim();
+            const newSn = document.getElementById('newSn').value.trim();
+            const outputElement = document.getElementById('replaceOutput');
+
+            if (!vin || !newSn) {
+                outputElement.innerHTML = '<span class="error">VIN和新车机SN号不能为空！</span>';
+                return;
+            }
+            await postJson(API_URLS.replace, { vin, newSn }, outputElement);
+        }
+
+        // 4. 车辆数据查询
+        async function queryVehicleData() {
+            const vin = document.getElementById('vehiclequeryVin').value.trim();
+            const outputElement = document.getElementById('queryOutput');
+            outputElement.className = 'output-area'; // Reset class
+
+            if (!vin) {
+                outputElement.innerHTML = '<span class="error">VIN不能为空！</span>';
+                return;
+            }
+
+            outputElement.innerHTML = '正在查询车辆数据，请稍候...';
+
+
+            try {
+                // VIN 作为 URL 路径参数
+                const response = await fetch(API_URLS.queryVehicle.replace('__VIN__', vin)); // 替换占位符
+                const jsonData = await response.json();
+
+                if (response.ok) {
+                    displayJsonAsTable(jsonData, 'queryOutput');
+                } else {
+                    outputElement.innerHTML = `<span class="error">查询失败 (${response.status}): ${jsonData.message || JSON.stringify(jsonData)}</span>`;
+                }
+            } catch (error) {
+                console.error('Network or Parse error:', error);
+                outputElement.innerHTML = `<span class="error">查询失败或数据解析错误: ${error.message}</span>`;
+            }
+        }
+
+        // 辅助函数：将 JSON 对象解析并显示为表格
+        function displayJsonAsTable(jsonData, outputId) {
+            const outputElement = document.getElementById(outputId);
+            outputElement.className = 'output-area';
+            if (typeof jsonData !== 'object' || jsonData === null) {
+                outputElement.innerHTML = `<span class="error">返回数据不是有效的JSON对象。</span><pre>${JSON.stringify(jsonData, null, 2)}</pre>`;
+                return;
+            }
+
+            let tableHTML = '<table class="result-table"><thead><tr><th>字段</th><th>值</th></tr></thead><tbody>';
+
+            function buildRows(obj, prefix = '') {
+                for (const key in obj) {
+                    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                        const value = obj[key];
+                        const fullKey = prefix ? `${prefix}.${key}` : key;
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                            tableHTML += `<tr><td style="font-weight:bold;">${fullKey}</td><td></td></tr>`;
+                            buildRows(value, fullKey); // 递归处理嵌套对象
+                        } else if (Array.isArray(value)) {
+                             tableHTML += `<tr><td style="font-weight:bold;">${fullKey}</td><td>`;
+                             value.forEach((item, index) => {
+                                 if (typeof item === 'object' && item !== null) {
+                                     tableHTML += `<div>- Item ${index + 1}:</div>`;
+                                     tableHTML += '<table class="result-table" style="margin-left: 20px;">';
+                                     for(const subKey in item) {
+                                         if (Object.prototype.hasOwnProperty.call(item, subKey)) {
+                                            tableHTML += `<tr><td>${subKey}</td><td>${item[subKey]}</td></tr>`;
+                                         }
+                                     }
+                                     tableHTML += '</table>';
+                                 } else {
+                                     tableHTML += `<div>- ${item}</div>`;
+                                 }
+                             });
+                             tableHTML += `</td></tr>`;
+                        } else {
+                            tableHTML += `<tr><td>${fullKey}</td><td>${value === null ? 'N/A' : value}</td></tr>`;
+                        }
+                    }
+                }
+            }
+            buildRows(jsonData);
+            tableHTML += '</tbody></table>';
+            outputElement.innerHTML = tableHTML;
+        }
+
+
+        // 5. 后台Service List查询
+        async function queryServiceList() {
+            const vin = document.getElementById('slqueryVin').value.trim();
+            const outputElement = document.getElementById('serviceListOutput');
+            outputElement.className = 'output-area'; // Reset class
+
+             if (!vin) {
+                outputElement.innerHTML = '<span class="error">VIN不能为空！</span>';
+                return;
+            }
+
+            outputElement.innerHTML = '正在查询Service List，请稍候...';
+
+            try {
+                const response = await fetch(API_URLS.queryServiceList.replace('__VIN__', vin)); // 替换占位符
+                const jsonData = await response.json();
+
+                if (response.ok) {
+                    const jsonString = JSON.stringify(jsonData, null, 2);
+                    // 使用 base64 编码来安全地传递 JSON 字符串，并处理中文字符兼容性
+                    const encodedJson = btoa(unescape(encodeURIComponent(jsonString)));
+
+                    outputElement.innerHTML = `
+                        <p class="success">Service List 查询成功.</p>
+                        <a href="#" class="download-link" onclick="downloadJson(event, '${encodedJson}', 'service_list.json')">下载 Service List (JSON)</a>
+                        <pre>${jsonString}</pre>`; // 用 pre 标签显示格式化的 JSON
+                } else {
+                     outputElement.innerHTML = `<span class="error">查询失败 (${response.status}): ${jsonData.message || JSON.stringify(jsonData)}</span>`;
+                }
+
+            } catch (error) {
+                console.error('Network or Parse error:', error);
+                outputElement.innerHTML = `<span class="error">查询失败或数据解析错误: ${error.message}</span>`;
+            }
+        }
+
+        // 下载JSON文件的辅助函数
+        function downloadJson(event, encodedJsonString, filename) {
+            event.preventDefault();
+            try {
+                // 解码 base64 并处理 UTF-8
+                const decodedJsonString = decodeURIComponent(escape(atob(encodedJsonString)));
+                const blob = new Blob([decodedJsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                document.getElementById('serviceListOutput').innerHTML += `<p class="error">下载失败: ${e.message}</p>`;
+            }
+        }
+
+        // 新增：6. 车辆主数据导入功能
+        async function uploadMasterData() {
+            const fileInput = document.getElementById('masterDataFile');
+            const outputElement = document.getElementById('masterDataOutput');
+            outputElement.className = 'output-area'; // 重置样式
+
+            if (fileInput.files.length === 0) {
+                outputElement.innerHTML = '<span class="error">请选择一个绑车信息模板Excel文件进行上传！</span>';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file); // 'file' 是后端用来接收文件的字段名
+
+            outputElement.innerHTML = '正在导入，请稍候...';
+
+            try {
+                const response = await fetch(API_URLS.uploadMasterData, {
+                    method: 'POST',
+                    // 注意：当使用 FormData 时，浏览器会自动设置 Content-Type: multipart/form-data
+                    // 所以不需要手动设置 headers['Content-Type']
+                    body: formData
+                });
+
+                const result = await response.json(); // 假设后端返回JSON
+
+
+                if (response.ok) {
+                    outputElement.innerHTML = `<span class="success">车辆数据导入成功: ${result.message || JSON.stringify(result)}</span>`;
+                    // 如果后端返回处理后的数据，你也可以在这里显示
+                    // outputElement.innerHTML += `<br><pre>${JSON.stringify(result.data, null, 2)}</pre>`;
+                } else {
+                    outputElement.innerHTML = `<span class="error">车辆数据导入失败 (${response.status}): ${result.message || JSON.stringify(result)}</span>`;
+                }
+            } catch (error) {
+                console.error('网络或解析错误:', error);
+                outputElement.innerHTML = `<span class="error">请求失败: ${error.message}</span>`;
+            }
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIM卡信息查询</title>
+    <style>
+        /* 通用样式 */
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* 头部样式 */
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+
+        /* 卡片通用样式 */
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表单组样式 */
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: calc(100% - 22px); /* 减去 padding 和 border */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1em;
+            box-sizing: border-box; /* 确保 padding 不增加总宽度 */
+        }
+
+        /* 按钮样式 */
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        button.secondary {
+            background-color: #6c757d;
+            margin-top: 15px;
+        }
+
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+
+        /* 加载状态样式 */
+        .loading {
+            display: none; /* 默认隐藏 */
+            text-align: center;
+            margin-top: 20px;
+            color: #3498db;
+            font-weight: bold;
+        }
+
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 消息提示样式 */
+        .error-message, .success-message {
+            display: none; /* 默认隐藏 */
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .error-message {
+            background-color: #fce4e4;
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+        }
+
+        .success-message {
+            background-color: #e6ffe6;
+            color: #2ecc71;
+            border: 1px solid #2ecc71;
+        }
+
+        /* 结果显示样式 */
+        .result-section {
+            display: none; /* 默认隐藏 */
+            margin-top: 20px;
+        }
+
+        .result-section h2 {
+            color: #3498db;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .basic-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+        }
+
+        .info-item {
+            background-color: #f9f9f9;
+            padding: 12px 15px;
+            border-radius: 6px;
+            border: 1px solid #eee;
+            display: flex; /* 让 label 和 value 可以在一行显示 */
+            flex-wrap: wrap; /* 如果内容过长可以换行 */
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: #333;
+            flex: 0 0 100px; /* 固定 label 宽度 */
+            margin-right: 10px;
+        }
+
+        .info-value {
+            color: #666;
+            flex: 1; /* 值占据剩余空间 */
+            word-break: break-all; /* 防止长字符串溢出 */
+        }
+
+        /* 模态框样式 */
+        .modal {
+            display: none; /* 默认隐藏 */
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 700px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .modal-title {
+            font-size: 1.5em;
+            color: #3498db;
+        }
+
+        .close-modal {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .close-modal:hover,
+        .close-modal:focus {
+            color: black;
+            text-decoration: none;
+        }
+
+        .json-viewer {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保持 JSON 格式 */
+            word-wrap: break-word; /* 防止长行溢出 */
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SIM卡信息查询</h1>
+        </div>
+        
+        <div class="card">
+            <div class="form-group">
+                <label for="project">项目</label>
+                <select id="project">
+                    <option value="Audi_5G">Audi 5G</option>
+                    <option value="GP">GP</option>
+                    <option value="CEI">CEI</option>
+                    <!-- 可以添加更多项目选项 -->
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="searchValue">搜索值 (VIN或ICCID)</label>
+                <input type="text" id="searchValue" placeholder="例如: LSVUBAG56R2000165 或 89860624400000000389">
+            </div>
+            
+            <button id="searchButton">查询</button>
+        </div>
+        
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>正在查询中...大约需要1~3分钟</p>
+        </div>
+        
+        <div class="error-message" id="errorMessage"></div>
+        <div class="success-message" id="successMessage"></div>
+        
+        <div class="result-section" id="resultSection">
+            <div class="card">
+                <h2>SIM卡基本信息</h2>
+                <div class="basic-info" id="basicInfo">
+                    <!-- 动态填充基本信息 -->
+                </div>
+                
+                <button class="secondary" id="showFullResponse">查看完整响应</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="responseModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">完整响应数据</div>
+                <button class="close-modal" id="closeModal">&times;</button>
+            </div>
+            <div class="json-viewer" id="fullResponse"></div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchButton = document.getElementById('searchButton');
+            const showFullResponse = document.getElementById('showFullResponse');
+            const closeModal = document.getElementById('closeModal');
+            const responseModal = document.getElementById('responseModal');
+            
+            // 翻译映射
+            const translations = {
+                "activation_datetime": "激活时间",
+                "bound_vin": "绑定VIN",
+                "brand": "品牌",
+                "device_type": "设备类型",
+                "iccid": "ICCID",
+                "imei": "IMEI",
+                "msisdn": "MSISDN",
+                "lifecycle": "生命周期状态",
+                "session_type_now": "当前会话类型",
+                "sim_id": "SIM卡ID",
+                "can_not_find_sim": "卡未注册,如果搜索值为VIN,建议更换为ICCID重新搜索",
+                "more_than_one_sim": "找到多个SIM卡记录，请联系MaJienuona@csvw.com解决"
+            };
+            
+            // 查询按钮点击事件
+            searchButton.addEventListener('click', function() {
+                const project = document.getElementById('project').value;
+                const searchValue = document.getElementById('searchValue').value.trim();
+                
+                if (!searchValue) {
+                    showError("请输入搜索值 (VIN或ICCID)");
+                    return;
+                }
+                
+                // 显示加载状态
+                document.querySelector('.loading').style.display = 'flex'; // 使用 flex 使 spinner 垂直居中
+                document.getElementById('resultSection').style.display = 'none';
+                document.getElementById('errorMessage').style.display = 'none';
+                document.getElementById('successMessage').style.display = 'none';
+                
+                // 构建请求URL
+                // **请注意：`http://47.116.180.173:5000/JasperGetter/SIMData` 是一个硬编码的URL。
+                // 如果你的应用部署在其他地方，或者你需要通过 Jinja2 模板渲染URL，请根据实际情况修改此行。**
+                const url = `{{ url_for('unicom_sim_query' )}}?project=${encodeURIComponent(project)}&search_value=${encodeURIComponent(searchValue)}`;
+                
+                // 发送请求
+                fetch(url)
+                    .then(response => {
+                        if (!response.ok) { // 检查HTTP状态码是否是成功的（2xx）
+                            // 对于非2xx响应，尝试读取响应体作为错误信息
+                            return response.json().catch(() => Promise.resolve({message: response.statusText || '未知错误', code: response.status}))
+                                .then(errorData => {
+                                    throw new Error(errorData.message || `HTTP错误: ${response.status}`);
+                                });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        document.querySelector('.loading').style.display = 'none';
+                        
+                        if (data.code === "200") {
+                            if (data.data && data.data.error_message) {
+                                // 处理错误消息
+                                const errorMsg = translations[data.data.error_message] || data.data.error_message;
+                                showError(errorMsg);
+                            } else if (data.data && data.data.sim_basic_data) {
+                                // 显示成功消息
+                                showSuccess(data.message || "查询成功");
+                                
+                                // 显示基本信息
+                                displayBasicInfo(data.data.sim_basic_data);
+                                
+                                // 存储完整响应数据
+                                // 使用 dataset 存储 JSON 字符串
+                                document.getElementById('resultSection').dataset.fullResponse = JSON.stringify(data, null, 2);
+                                document.getElementById('resultSection').style.display = 'block';
+                            } else {
+                                showError("返回数据格式不正确");
+                            }
+                        } else {
+                             // 后端返回的code不是200，但可能是有效的错误信息
+                             showError(data.message || "请求失败");
+                        }
+                    })
+                    .catch(error => {
+                        document.querySelector('.loading').style.display = 'none';
+                        // 统一处理 fetch 过程中或响应处理中的错误
+                        console.error("Fetch error:", error);
+                        // 检查是否是硬编码的500错误，或通用的HTTP错误
+                        if (error.message.includes('500') || error.message.includes('HTTP错误: 500')) {
+                             showError("后台错误，请联系MaJienuona@csvw.com支持");
+                        } else {
+                            showError("请求失败: " + error.message);
+                        }
+                    });
+            });
+            
+            // 显示完整响应
+            showFullResponse.addEventListener('click', function() {
+                const fullResponse = document.getElementById('resultSection').dataset.fullResponse;
+                if (fullResponse) {
+                    document.getElementById('fullResponse').textContent = fullResponse;
+                    responseModal.style.display = 'flex'; // 使用 flex 居中模态框
+                }
+            });
+            
+            // 关闭模态框
+            closeModal.addEventListener('click', function() {
+                responseModal.style.display = 'none';
+            });
+            
+            // 点击模态框外部关闭
+            window.addEventListener('click', function(event) {
+                if (event.target === responseModal) {
+                    responseModal.style.display = 'none';
+                }
+            });
+            
+            // 显示错误消息
+            function showError(message) {
+                const errorElement = document.getElementById('errorMessage');
+                const successElement = document.getElementById('successMessage');
+                errorElement.textContent = message;
+                errorElement.style.display = 'block';
+                successElement.style.display = 'none'; // 确保成功消息隐藏
+            }
+            
+            // 显示成功消息
+            function showSuccess(message) {
+                const errorElement = document.getElementById('errorMessage');
+                const successElement = document.getElementById('successMessage');
+                successElement.textContent = message;
+                successElement.style.display = 'block';
+                errorElement.style.display = 'none'; // 确保错误消息隐藏
+            }
+            
+            // 显示基本信息
+            function displayBasicInfo(basicData) {
+                const basicInfoElement = document.getElementById('basicInfo');
+                basicInfoElement.innerHTML = ''; // 清空之前的内容
+                
+                for (const [key, value] of Object.entries(basicData)) {
+                    const translatedKey = translations[key] || key;
+                    
+                    const infoItem = document.createElement('div');
+                    infoItem.className = 'info-item';
+                    
+                    const labelSpan = document.createElement('span');
+                    labelSpan.className = 'info-label';
+                    labelSpan.textContent = translatedKey;
+                    
+                    const valueSpan = document.createElement('span');
+                    valueSpan.className = 'info-value';
+                    valueSpan.textContent = value !== null && value !== undefined ? value : '无';
+                    
+                    infoItem.appendChild(labelSpan);
+                    infoItem.appendChild(valueSpan);
+                    basicInfoElement.appendChild(infoItem);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

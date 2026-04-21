@@ -1,0 +1,59 @@
+# --- Root (monorepo) ---
+.DS_Store
+Thumbs.db
+
+# Python bytecode (anywhere in the repo)
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Secrets / local env (never commit)
+.env
+.env.*
+!.env.example
+!backend/.env.example
+
+# --- Backend ---
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/*.py[cod]
+backend/$py.class
+
+# Local DB & logs (regenerate / machine-specific)
+backend/app.db
+backend/*.db
+backend/logs/
+backend/*.log
+
+# PyInstaller / build outputs
+backend/build/
+backend/dist/
+backend/*.spec.bak
+
+# --- Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+# --- Portable release (rebuild with scripts/build-release.ps1) ---
+release/
+
+# Optional local SQLite dumps under ref (large / may contain secrets)
+ref/archive/sqlite-backups/*.db
+ref/**/*.db
+
+# ref/toolboxweb: legacy reference — do not commit caches, webdrivers, or credential files
+ref/toolboxweb/**/__pycache__/
+ref/toolboxweb/tools/*.exe
+ref/toolboxweb/static/config/account*
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

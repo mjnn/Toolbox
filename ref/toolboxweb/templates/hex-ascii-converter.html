@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>十六进制与ASCII码转换工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .swap-btn {
+            background-color: #2ecc71;
+        }
+        .swap-btn:hover {
+            background-color: #27ae60;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .options {
+            margin-top: 10px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>十六进制与ASCII码转换工具</h1>
+    
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>ASCII文本</h2>
+            </div>
+            <textarea id="asciiInput" placeholder="在此输入ASCII文本..."></textarea>
+            <div class="buttons">
+                <button id="asciiToHex">转换为十六进制 →</button>
+                <button class="swap-btn" id="swapBtn">↔ 交换</button>
+                <button class="clear-btn" id="clearBtn">清空</button>
+            </div>
+        </div>
+        
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>十六进制</h2>
+            </div>
+            <textarea id="hexInput" placeholder="在此输入十六进制值（例如: 48 65 6C 6C 6F）..."></textarea>
+            <div class="options">
+                <div class="checkbox-container">
+                    <input type="checkbox" id="addSpace" checked>
+                    <label for="addSpace">字节间添加空格</label>
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="uppercaseHex">
+                    <label for="uppercaseHex">大写十六进制</label>
+                </div>
+            </div>
+            <div class="buttons">
+                <button id="hexToAscii">← 转换为ASCII</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="info">
+        <p><strong>使用说明：</strong></p>
+        <ul>
+            <li>在上方文本框输入ASCII文本，点击"转换为十六进制"按钮将其转换为十六进制值</li>
+            <li>在下方文本框输入十六进制值（用空格分隔），点击"转换为ASCII"按钮将其转换为ASCII文本</li>
+            <li>点击"交换"按钮可以交换两个文本框的内容</li>
+            <li>点击"清空"按钮可以清空所有内容</li>
+        </ul>
+        <p><strong>注意：</strong>非ASCII字符（如中文）将使用UTF-8编码转换为十六进制序列。</p>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const asciiInput = document.getElementById('asciiInput');
+            const hexInput = document.getElementById('hexInput');
+            const asciiToHexBtn = document.getElementById('asciiToHex');
+            const hexToAsciiBtn = document.getElementById('hexToAscii');
+            const swapBtn = document.getElementById('swapBtn');
+            const clearBtn = document.getElementById('clearBtn');
+            const addSpaceCheckbox = document.getElementById('addSpace');
+            const uppercaseHexCheckbox = document.getElementById('uppercaseHex');
+            
+            // ASCII转十六进制
+            asciiToHexBtn.addEventListener('click', function() {
+                const text = asciiInput.value;
+                if (!text) return;
+                
+                let hexString = '';
+                for (let i = 0; i < text.length; i++) {
+                    const charCode = text.charCodeAt(i);
+                    let hex = charCode.toString(16);
+                    
+                    // 处理单字节十六进制（前面补0）
+                    if (hex.length === 1) {
+                        hex = '0' + hex;
+                    }
+                    
+                    // 大写处理
+                    if (uppercaseHexCheckbox.checked) {
+                        hex = hex.toUpperCase();
+                    }
+                    
+                    hexString += hex;
+                    
+                    // 添加空格分隔
+                    if (addSpaceCheckbox.checked && i < text.length - 1) {
+                        hexString += ' ';
+                    }
+                }
+                
+                hexInput.value = hexString;
+            });
+            
+            // 十六进制转ASCII
+            hexToAsciiBtn.addEventListener('click', function() {
+                let hexString = hexInput.value.trim();
+                if (!hexString) return;
+                
+                // 移除所有非十六进制字符
+                hexString = hexString.replace(/[^0-9a-fA-F]/g, '');
+                
+                // 检查长度是否为偶数
+                if (hexString.length % 2 !== 0) {
+                    alert('十六进制字符串长度不正确，请确保每两个字符代表一个字节');
+                    return;
+                }
+                
+                let result = '';
+                for (let i = 0; i < hexString.length; i += 2) {
+                    const hexByte = hexString.substr(i, 2);
+                    const charCode = parseInt(hexByte, 16);
+                    result += String.fromCharCode(charCode);
+                }
+                
+                asciiInput.value = result;
+            });
+            
+            // 交换内容
+            swapBtn.addEventListener('click', function() {
+                const asciiTemp = asciiInput.value;
+                const hexTemp = hexInput.value;
+                
+                asciiInput.value = hexTemp;
+                hexInput.value = asciiTemp;
+            });
+            
+            // 清空内容
+            clearBtn.addEventListener('click', function() {
+                asciiInput.value = '';
+                hexInput.value = '';
+            });
+            
+            // 大写十六进制选项变化时，如果当前有ASCII内容，重新转换
+            uppercaseHexCheckbox.addEventListener('change', function() {
+                if (asciiInput.value) {
+                    asciiToHexBtn.click();
+                }
+            });
+            
+            // 空格分隔选项变化时，如果当前有ASCII内容，重新转换
+            addSpaceCheckbox.addEventListener('change', function() {
+                if (asciiInput.value) {
+                    asciiToHexBtn.click();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,464 @@
+from __future__ import annotations
+
+from sqlalchemy import text
+from sqlmodel import SQLModel, create_engine, Session, select
+import os
+import json
+
+from app.core.config_simple import (
+    DATABASE_URL,
+    FIRST_SUPERUSER,
+    FIRST_SUPERUSER_PASSWORD,
+    FIRST_SUPERUSER_USERNAME,
+    BACKEND_ROOT,
+)
+from app.models import (  # noqa: F401 — imported for SQLModel metadata registration
+    Tool,
+    ToolRelease,
+    ToolAnnouncement,
+    APIAccessLog,
+    Role,
+    User,
+    UserRole,
+    Feedback,
+    ToolOwner,
+    ServiceIdRegistryEntry,
+    ServiceIdRuleOption,
+    MosTokenPoolEntry,
+)
+
+def _normalize_sqlite_url(url: str) -> str:
+    """将 sqlite:///./app.db 解析为相对 backend 根目录的绝对路径，避免工作目录不同导致找不到库文件。"""
+    if url.startswith("sqlite:///./"):
+        rel = url[len("sqlite:///./") :]
+        abs_path = (BACKEND_ROOT / rel).resolve()
+        return f"sqlite:///{abs_path.as_posix()}"
+    return url
+
+
+def _is_sqlite(url: str) -> bool:
+    return url.strip().lower().startswith("sqlite")
+
+
+def _engine_kwargs(url: str) -> dict:
+    if _is_sqlite(url):
+        return {"connect_args": {"check_same_thread": False}}
+    return {"pool_pre_ping": True}
+
+
+def _should_echo_sql() -> bool:
+    return os.getenv("SQL_ECHO", "").strip().lower() in ("1", "true", "yes")
+
+
+_raw_database_url = DATABASE_URL.strip()
+_database_url = (
+    _normalize_sqlite_url(_raw_database_url)
+    if _is_sqlite(_raw_database_url)
+    else _raw_database_url
+)
+
+engine = create_engine(
+    _database_url,
+    echo=_should_echo_sql(),
+    **_engine_kwargs(_database_url),
+)
+
+SYSTEM_ROLES = {
+    "tool_owner": "Can review and approve tool access requests",
+    "tool_user": "Can apply for tool access",
+}
+
+SERVICE_ID_REGISTRY_TOOL = (
+    "service-id-registry",
+    "Service ID 统一管理：普通用户提交申请，负责人定义规则并全量治理。",
+)
+
+MOS_INTEGRATION_TOOLBOX_TOOL = (
+    "mos-integration-toolbox",
+    "MOS综合工具箱：IAM X509、SIM、UAT AF DP、UAT SP、UAT车辆配置导入。",
+)
+
+BOOTSTRAP_USERS = [
+    {
+        "username": "admin",
+        "email": "admin@example.com",
+        "full_name": "System Admin",
+        "department": "Platform",
+        "password": "admin123",
+        "is_superuser": True,
+        "is_approved": True,
+    },
+    {
+        "username": "owner",
+        "email": "owner@example.com",
+        "full_name": "Feature Owner",
+        "department": "Product",
+        "password": "owner123",
+        "is_superuser": False,
+        "is_approved": True,
+    },
+    {
+        "username": "user",
+        "email": "user@example.com",
+        "full_name": "Normal User",
+        "department": "Business",
+        "password": "user12345",
+        "is_superuser": False,
+        "is_approved": True,
+    },
+]
+
+
+def _ensure_system_roles(session: Session):
+    for role_name, description in SYSTEM_ROLES.items():
+        role = session.exec(select(Role).where(Role.name == role_name)).first()
+        if not role:
+            session.add(Role(name=role_name, description=description, is_system=True))
+
+
+def _ensure_first_superuser(session: Session) -> None:
+    """空库且无超管时，根据 FIRST_SUPERUSER / FIRST_SUPERUSER_PASSWORD 创建首个管理员。"""
+    from app.api.v1.auth import get_password_hash
+
+    existing_super = session.exec(select(User).where(User.is_superuser == True)).first()  # noqa: E712
+    if existing_super:
+        return
+    email = (FIRST_SUPERUSER or "").strip()
+    password = (FIRST_SUPERUSER_PASSWORD or "").strip()
+    if not email or not password:
+        return
+    username = (FIRST_SUPERUSER_USERNAME or "").strip() or email.split("@", 1)[0]
+    if not username:
+        return
+    if session.exec(select(User).where(User.username == username)).first():
+        return
+    if session.exec(select(User).where(User.email == email)).first():
+        return
+
+    user = User(
+        username=username,
+        email=email,
+        hashed_password=get_password_hash(password),
+        full_name="系统管理员",
+        department="Platform",
+        is_superuser=True,
+        is_approved=True,
+        is_active=True,
+    )
+    session.add(user)
+    session.flush()
+
+    tool_user_role = session.exec(select(Role).where(Role.name == "tool_user")).first()
+    tool_owner_role = session.exec(select(Role).where(Role.name == "tool_owner")).first()
+    if tool_user_role:
+        session.add(UserRole(user_id=user.id, role_id=tool_user_role.id))
+    if tool_owner_role:
+        session.add(UserRole(user_id=user.id, role_id=tool_owner_role.id))
+
+
+def _ensure_service_id_registry_tool(session: Session) -> None:
+    tool_name, description = SERVICE_ID_REGISTRY_TOOL
+    exists = session.exec(select(Tool).where(Tool.name == tool_name)).first()
+    if exists:
+        if not exists.description:
+            exists.description = description
+            session.add(exists)
+        return
+    session.add(
+        Tool(
+            name=tool_name,
+            description=description,
+            version="1.0.0",
+            is_active=True,
+        )
+    )
+
+
+def _ensure_mos_integration_toolbox_tool(session: Session) -> None:
+    tool_name, description = MOS_INTEGRATION_TOOLBOX_TOOL
+    exists = session.exec(select(Tool).where(Tool.name == tool_name)).first()
+    if exists:
+        if not exists.description:
+            exists.description = description
+            session.add(exists)
+        elif exists.description and "重构版" in exists.description:
+            exists.description = description
+            session.add(exists)
+        return
+    session.add(
+        Tool(
+            name=tool_name,
+            description=description,
+            version="1.0.0",
+            is_active=True,
+        )
+    )
+
+
+def _ensure_user_default_roles(session: Session):
+    users = session.exec(select(User)).all()
+    tool_user_role = session.exec(select(Role).where(Role.name == "tool_user")).first()
+    tool_owner_role = session.exec(select(Role).where(Role.name == "tool_owner")).first()
+    if not tool_user_role or not tool_owner_role:
+        return
+
+    for user in users:
+        has_tool_user = session.exec(
+            select(UserRole).where(
+                UserRole.user_id == user.id,
+                UserRole.role_id == tool_user_role.id,
+            )
+        ).first()
+        if not has_tool_user:
+            session.add(UserRole(user_id=user.id, role_id=tool_user_role.id))
+
+        if user.is_superuser:
+            has_tool_owner = session.exec(
+                select(UserRole).where(
+                    UserRole.user_id == user.id,
+                    UserRole.role_id == tool_owner_role.id,
+                )
+            ).first()
+            if not has_tool_owner:
+                session.add(UserRole(user_id=user.id, role_id=tool_owner_role.id))
+
+
+def _ensure_bootstrap_users(session: Session):
+    from app.api.v1.auth import get_password_hash
+
+    tool_user_role = session.exec(select(Role).where(Role.name == "tool_user")).first()
+    tool_owner_role = session.exec(select(Role).where(Role.name == "tool_owner")).first()
+    service_tool = session.exec(
+        select(Tool).where(Tool.name == SERVICE_ID_REGISTRY_TOOL[0])
+    ).first()
+
+    for spec in BOOTSTRAP_USERS:
+        user = session.exec(select(User).where(User.username == spec["username"])).first()
+        if not user:
+            user = User(
+                username=spec["username"],
+                email=spec["email"],
+                hashed_password=get_password_hash(spec["password"]),
+                full_name=spec["full_name"],
+                department=spec["department"],
+                is_superuser=spec["is_superuser"],
+                is_approved=spec["is_approved"],
+                is_active=True,
+            )
+            session.add(user)
+            session.flush()
+        else:
+            changed = False
+            if not user.is_approved:
+                user.is_approved = True
+                changed = True
+            if spec["is_superuser"] and not user.is_superuser:
+                user.is_superuser = True
+                changed = True
+            if changed:
+                session.add(user)
+
+        if tool_user_role:
+            has_user_role = session.exec(
+                select(UserRole).where(
+                    UserRole.user_id == user.id,
+                    UserRole.role_id == tool_user_role.id,
+                )
+            ).first()
+            if not has_user_role:
+                session.add(UserRole(user_id=user.id, role_id=tool_user_role.id))
+
+        if spec["username"] in {"admin", "owner"} and tool_owner_role:
+            has_owner_role = session.exec(
+                select(UserRole).where(
+                    UserRole.user_id == user.id,
+                    UserRole.role_id == tool_owner_role.id,
+                )
+            ).first()
+            if not has_owner_role:
+                session.add(UserRole(user_id=user.id, role_id=tool_owner_role.id))
+
+        if spec["username"] == "owner" and service_tool:
+            owner_binding = session.exec(
+                select(ToolOwner).where(
+                    ToolOwner.tool_id == service_tool.id,
+                    ToolOwner.user_id == user.id,
+                )
+            ).first()
+            if not owner_binding:
+                session.add(ToolOwner(tool_id=service_tool.id, user_id=user.id))
+
+
+def _sync_behavior_catalogs(session: Session) -> None:
+    from app.services.tool_behavior_catalog import default_behavior_catalogs
+
+    defaults = default_behavior_catalogs()
+    for name, js in defaults.items():
+        t = session.exec(select(Tool).where(Tool.name == name)).first()
+        if not t:
+            continue
+        if t.behavior_catalog_json is None or str(t.behavior_catalog_json).strip() == "":
+            t.behavior_catalog_json = js
+            session.add(t)
+            continue
+        try:
+            existing_raw = json.loads(t.behavior_catalog_json)
+        except Exception:
+            existing_raw = []
+        try:
+            default_raw = json.loads(js)
+        except Exception:
+            default_raw = []
+        if not isinstance(existing_raw, list) or not isinstance(default_raw, list):
+            continue
+        existing_by_key = {
+            str(item.get("key", "")).strip(): item
+            for item in existing_raw
+            if isinstance(item, dict) and str(item.get("key", "")).strip()
+        }
+        changed = False
+        for item in default_raw:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key", "")).strip()
+            label = str(item.get("label", "")).strip()
+            if not key or not label:
+                continue
+            if key not in existing_by_key:
+                existing_raw.append({"key": key, "label": label})
+                changed = True
+        if changed:
+            t.behavior_catalog_json = json.dumps(existing_raw, ensure_ascii=False)
+            session.add(t)
+
+
+def seed_initial_data():
+    with Session(engine) as session:
+        _ensure_system_roles(session)
+        _ensure_first_superuser(session)
+        _ensure_service_id_registry_tool(session)
+        _ensure_mos_integration_toolbox_tool(session)
+        _sync_behavior_catalogs(session)
+        session.commit()
+
+        _ensure_user_default_roles(session)
+        if os.getenv("TOOLBOX_BOOTSTRAP_USERS", "0") == "1":
+            _ensure_bootstrap_users(session)
+        session.commit()
+
+def _migrate_user_columns(session: Session) -> None:
+    """旧库补字段：is_approved、avatar_url"""
+    try:
+        rows = session.exec(text("PRAGMA table_info(user)")).all()
+    except Exception:
+        return
+    cols = {r[1] for r in rows}
+    if "is_approved" not in cols:
+        session.exec(text("ALTER TABLE user ADD COLUMN is_approved BOOLEAN DEFAULT 1"))
+        session.commit()
+    if "avatar_url" not in cols:
+        session.exec(text("ALTER TABLE user ADD COLUMN avatar_url VARCHAR(512)"))
+        session.commit()
+    if "department" not in cols:
+        session.exec(text("ALTER TABLE user ADD COLUMN department VARCHAR(100)"))
+        session.commit()
+
+
+def _migrate_tool_spec_revision(session: Session) -> None:
+    """旧库补字段：tool.spec_revision（需求/模板修订版本号）"""
+    try:
+        rows = session.exec(text("PRAGMA table_info(tool)")).all()
+    except Exception:
+        return
+    cols = {r[1] for r in rows}
+    if "spec_revision" not in cols:
+        session.exec(text("ALTER TABLE tool ADD COLUMN spec_revision VARCHAR(32)"))
+        session.commit()
+
+
+def _migrate_tool_behavior_catalog_json(session: Session) -> None:
+    try:
+        rows = session.exec(text("PRAGMA table_info(tool)")).all()
+    except Exception:
+        return
+    cols = {r[1] for r in rows}
+    if "behavior_catalog_json" not in cols:
+        session.exec(text("ALTER TABLE tool ADD COLUMN behavior_catalog_json TEXT"))
+        session.commit()
+
+
+def _migrate_apiaccesslog_behavior_columns(session: Session) -> None:
+    try:
+        rows = session.exec(text("PRAGMA table_info(apiaccesslog)")).all()
+    except Exception:
+        return
+    cols = {r[1] for r in rows}
+    if "behavior_label" not in cols:
+        session.exec(text("ALTER TABLE apiaccesslog ADD COLUMN behavior_label VARCHAR(200)"))
+        session.commit()
+
+
+def _migrate_tool_announcement_columns(session: Session) -> None:
+    try:
+        rows = session.exec(text("PRAGMA table_info(toolannouncement)")).all()
+    except Exception:
+        return
+    cols = {r[1] for r in rows}
+    if "visibility" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN visibility VARCHAR(20) DEFAULT 'global'"))
+        session.commit()
+    if "priority" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN priority VARCHAR(20) DEFAULT 'notice'"))
+        session.commit()
+    if "scroll_speed_seconds" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN scroll_speed_seconds INTEGER DEFAULT 45"))
+        session.commit()
+    if "font_family" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN font_family VARCHAR(100)"))
+        session.commit()
+    if "font_size_px" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN font_size_px INTEGER DEFAULT 14"))
+        session.commit()
+    if "text_color" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN text_color VARCHAR(20)"))
+        session.commit()
+    if "background_color" not in cols:
+        session.exec(text("ALTER TABLE toolannouncement ADD COLUMN background_color VARCHAR(20)"))
+        session.commit()
+
+
+def _backfill_apiaccesslog_behavior_labels(session: Session) -> None:
+    from app.services.tool_behavior_catalog import resolve_behavior_label_from_tool
+
+    need = session.exec(
+        select(APIAccessLog).where(
+            APIAccessLog.tool_id != None,  # noqa: E711
+            APIAccessLog.feature_name != None,  # noqa: E711
+            APIAccessLog.behavior_label == None,  # noqa: E711
+        )
+    ).all()
+    if not need:
+        return
+    for row in need:
+        tool = session.get(Tool, row.tool_id) if row.tool_id else None
+        row.behavior_label = resolve_behavior_label_from_tool(tool, row.feature_name)
+        session.add(row)
+    session.commit()
+
+
+def create_db_and_tables():
+    SQLModel.metadata.create_all(engine)
+    if _is_sqlite(_raw_database_url):
+        with Session(engine) as session:
+            _migrate_user_columns(session)
+            _migrate_tool_spec_revision(session)
+            _migrate_tool_behavior_catalog_json(session)
+            _migrate_apiaccesslog_behavior_columns(session)
+            _migrate_tool_announcement_columns(session)
+    seed_initial_data()
+    with Session(engine) as session:
+        _backfill_apiaccesslog_behavior_labels(session)
+
+def get_session():
+    with Session(engine) as session:
+        yield session

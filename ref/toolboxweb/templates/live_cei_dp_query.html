@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIVE CEI DP数据查询工具</title>
+    <style>
+        /* 从用户提供的CSS开始 */
+        body {
+            font-family: 'Roboto', 'Arial', sans-serif; /* 更改字体以适应现代UI */
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em; /* 标题稍大 */
+            font-weight: 700;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 25px; /* 增加内边距 */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* 更深的阴影 */
+            transition: all 0.3s ease-in-out;
+        }
+        .converter-box:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+            font-size: 1.8em;
+            font-weight: 700;
+        }
+        /* 原本的textarea，这里我们是input */
+        input[type="text"] {
+            width: calc(100% - 22px); /* 减去padding和border */
+            padding: 12px; /* 增加内边距 */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Roboto', monospace;
+            font-size: 1em;
+            margin-bottom: 15px; /* 增加下边距 */
+            box-sizing: border-box; /* 确保padding和border不增加宽度 */
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: flex-end; /* 按钮靠右 */
+        }
+        button {
+            padding: 10px 20px; /* 增加内边距 */
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease; /* 添加transform过渡 */
+            font-size: 1em;
+            font-weight: 500;
+        }
+        button:hover {
+            background-color: #2980b9;
+            transform: translateY(-2px); /* 悬停时轻微上浮 */
+        }
+        button:active {
+            transform: translateY(0); /* 点击时恢复 */
+        }
+        .swap-btn {
+            background-color: #2ecc71;
+        }
+        .swap-btn:hover {
+            background-color: #27ae60;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .options {
+            margin-top: 10px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            min-height: 50px; /* 确保有足够空间显示消息 */
+        }
+
+        /* 新增的表格样式 */
+        .output-area {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+
+        .result-table {
+            width: 100%;
+            border-collapse: collapse; /* 表格边框合并 */
+            margin-top: 15px;
+            font-size: 0.95em;
+        }
+        .result-table thead tr {
+            background-color: #f8f8f8;
+            border-bottom: 2px solid #ddd;
+        }
+        .result-table th,
+        .result-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border: 1px solid #eee;
+        }
+        .result-table th {
+            color: #2c3e50;
+            font-weight: 700;
+        }
+        .result-table tbody tr:nth-child(even) {
+            background-color: #fdfdfd; /* 隔行变色 */
+        }
+        .result-table tbody tr:hover {
+            background-color: #f0f8ff; /* 悬停高亮 */
+        }
+        .result-table pre {
+            white-space: pre-wrap; /* 保持JSON格式 */
+            word-break: break-all;
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #eee;
+            max-height: 300px; /* 限制高度并允许滚动 */
+            overflow-y: auto;
+        }
+
+        /* 错误信息样式 */
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+            margin-top: 10px;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LIVE CEI DP数据查询工具</h1>
+
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>LIVE CEI DP数据查询</h2>
+            </div>
+            <div>
+                <label for="vehiclequeryVin" style="font-weight: bold; margin-bottom: 5px; display: block;">请输入 VIN :</label>
+                <input type="text" id="vehiclequeryVin" placeholder="请输入17位VIN码" maxlength="17">
+                <div class="buttons">
+                    <button onclick="queryVehicleData()">查询</button>
+                    <button class="clear-btn" onclick="clearQueryInput()">清空</button>
+                </div>
+            </div>
+            <div id="queryOutput" class="output-area">
+                <!-- 查询结果将显示在这里 -->
+                请在上方输入VIN并点击“查询”按钮。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 注意：{{url_for('uat_cei_dp_query',vin=vin)}} 是一个后端模板语法（例如 Flask, Jinja2）。
+        // 在纯前端HTML中，你需要手动替换它为一个实际的后端API地址。
+        // 例如：'/api/vehicle-data/' 或 'https://your-backend.com/api/uat_cei_dp_query/'
+        // 这里的示例我将用一个占位符，你需要在部署时替换它。
+
+
+        async function queryVehicleData() {
+            const vin = document.getElementById('vehiclequeryVin').value.trim();
+            const outputElement = document.getElementById('queryOutput');
+            outputElement.className = 'output-area'; // Reset class for styling
+
+            if (!vin) {
+                outputElement.innerHTML = '<span class="error">VIN不能为空！</span>';
+                return;
+            }
+            if (vin.length !== 17) {
+                outputElement.innerHTML = '<span class="error">VIN码长度必须是17位！</span>';
+                return;
+            }
+
+
+            outputElement.innerHTML = '正在查询车辆数据，请稍候...';
+
+            try {
+                // VIN 作为 URL 路径参数
+                const response = await fetch('{{ url_for('get_live_cei_dp_info', vin='__VIN__') }}'.replace('__VIN__', vin));
+                const jsonData = await response.json();
+                if (response.ok) {
+                    displayJsonAsTable(jsonData, 'queryOutput');
+                } else {
+                    outputElement.innerHTML = `<span class="error">查询失败 (${response.status}): ${jsonData.message || JSON.stringify(jsonData, null, 2)}</span>`;
+                }
+            } catch (error) {
+                console.error('Network or Parse error:', error);
+                outputElement.innerHTML = `<span class="error">查询失败或数据解析错误: ${error.message}<br>请检查网络连接或后端服务是否正常。</span>`;
+            }
+        }
+
+        // 辅助函数：将 JSON 对象解析并显示为表格
+        function displayJsonAsTable(jsonData, outputId) {
+            const outputElement = document.getElementById(outputId);
+            outputElement.className = 'output-area'; // Apply output-area class
+
+            if (typeof jsonData !== 'object' || jsonData === null) {
+                outputElement.innerHTML = `<span class="error">返回数据不是有效的JSON对象。</span>
+                                          <pre>${JSON.stringify(jsonData, null, 2)}</pre>`;
+                return;
+            }
+
+            let tableHTML = '<table class="result-table"><thead><tr><th>字段</th><th>值</th></tr></thead><tbody>';
+
+            function buildRows(obj, prefix = '') {
+                for (const key in obj) {
+                    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                        const value = obj[key];
+                        const fullKey = prefix ? `${prefix}.${key}` : key;
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                            // 嵌套对象，只显示字段名，值留空，然后递归
+                            tableHTML += `<tr><td style="font-weight:bold;">${fullKey}</td><td></td></tr>`;
+                            buildRows(value, fullKey); // 递归处理嵌套对象
+                        } else if (Array.isArray(value)) {
+                            // 数组处理
+                            tableHTML += `<tr><td style="font-weight:bold;">${fullKey}</td><td>`;
+                            if (value.length === 0) {
+                                tableHTML += `<em>(空数组)</em>`;
+                            } else {
+                                value.forEach((item, index) => {
+                                    if (typeof item === 'object' && item !== null) {
+                                        // 数组中的对象，创建一个小的嵌套表格
+                                        tableHTML += `<div style="margin-top: 10px; margin-bottom: 5px; font-weight: bold;">- 列表项 ${index + 1}:</div>`;
+                                        tableHTML += '<table class="result-table" style="margin-left: 20px; width: auto;">';
+                                        for(const subKey in item) {
+                                            if (Object.prototype.hasOwnProperty.call(item, subKey)) {
+                                                tableHTML += `<tr><td>${subKey}</td><td>${item[subKey] === null ? 'N/A' : item[subKey]}</td></tr>`;
+                                            }
+                                        }
+                                        tableHTML += '</table>';
+                                    } else {
+                                        // 数组中的原始值
+                                        tableHTML += `<div>- ${item === null ? 'N/A' : item}</div>`;
+                                    }
+                                });
+                            }
+                            tableHTML += `</td></tr>`;
+                        } else {
+                            // 原始值
+                            tableHTML += `<tr><td>${fullKey}</td><td>${value === null ? 'N/A' : value}</td></tr>`;
+                        }
+                    }
+                }
+            }
+            buildRows(jsonData);
+            tableHTML += '</tbody></table>';
+            outputElement.innerHTML = tableHTML;
+        }
+
+        // 清空输入框和结果
+        function clearQueryInput() {
+            document.getElementById('vehiclequeryVin').value = '';
+            document.getElementById('queryOutput').innerHTML = '请在上方输入VIN并点击“查询”按钮。';
+        }
+    </script>
+</body>
+</html>

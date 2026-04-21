@@ -1,0 +1,27 @@
+{
+  "$schema": "../../../../../contracts/tool.manifest.schema.json",
+  "tool_key": "service-id-registry",
+  "display_name": "服务 ID 注册",
+  "feature_slugs": [
+    "service-id-entries",
+    "service-id-rule-options",
+    "service-id-rule-options/list",
+    "service-id-export"
+  ],
+  "behavior_catalog": [
+    { "key": "service-id-entries", "label": "服务 ID 条目（查询与维护）" },
+    { "key": "service-id-rule-options", "label": "服务 ID 规则选项" },
+    { "key": "service-id-rule-options/list", "label": "服务 ID 规则选项（分页查询）" },
+    { "key": "service-id-export", "label": "导出服务 ID 全量" }
+  ],
+  "frontend": {
+    "detail_panel_module": "ServiceIdRegistryPanel",
+    "manage_tab_modules": [
+      {
+        "name": "service-id-registry",
+        "label": "服务 ID 治理",
+        "module": "ServiceIdRegistryManageTab"
+      }
+    ]
+  }
+}

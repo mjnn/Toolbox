@@ -1,0 +1,64 @@
+# 最小 CI：工具 manifest / 插件边界检查 + 前端生产构建。
+# 与本地 `scripts/run-ci-tool-checks.ps1` + `pnpm build` 对齐（PowerShell 脚本内部即调用同名 Python 脚本）。
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tool-checks:
+    name: Tool manifests & plugin boundaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install jsonschema (for validate_tool_manifests)
+        run: pip install "jsonschema==4.23.0"
+
+      - name: Validate tool manifests
+        run: python scripts/validate_tool_manifests.py
+
+      - name: Check tool plugin import boundaries
+        run: python scripts/check_tool_plugin_boundaries.py
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build

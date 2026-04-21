@@ -1,0 +1,23 @@
+---
+description: 新工具开发边界 — 优先改插件目录与注册表，少动宿主
+globs:
+  - backend/app/tools/plugins/**/*
+  - frontend/src/tools/**/*
+  - contracts/**/*
+---
+
+# 工具插件（与宿主解耦）
+
+- **宿主**负责 IAM、工具目录、`ToolManage` 通用 Tab、`ensure_tool_access`、审计路径约定；见 `docs/TOOL_INTEGRATION_STANDARD.md`。仓库总览与 Agent 标准流程见 `docs/PROJECT_AND_AGENT_GUIDE.md`。
+- **新工具或改某一工具**：优先只修改：
+  - `backend/app/tools/plugins/<tool_folder>/`（`routes.py` + `tool.manifest.json`）
+  - `frontend/src/tools/registry.ts`（`toolDetailByKey` / `toolManageExtraTabsByKey` 增加一行映射）
+  - `contracts/tool.manifest.schema.json`（仅当契约字段需扩展时）
+- **不要**在 `ToolDetail.vue` / `ToolManage.vue` 里新增 `tool.name === '...'` 分支；应扩 registry。
+- `ToolManage` 顶层 Tab 顺序遵循现网约定：**工具专属管理在前，通用管理（`name="general"`）在后**；通用管理内部优先使用二级 tab（状态/发版/授权/使用记录/反馈）。
+- 工具专属管理若包含多个模块（如规则/配置/日志），也必须采用二级 tab 分组，不可在同一页长列表堆叠。
+- 列表必须后端分页（`skip/limit` + `total/items`），前端分页控件与筛选重置行为必须完整；多 tab 页面建议将 tab 与分页状态同步到 URL query，保证刷新恢复上下文。
+- 所有用户可见提示必须中文：包括标题、按钮、表单提示、弹窗、toast、空态、错误提示，以及后端返回给前端直接展示的 `detail/message`（不可本地化的协议/字段名除外）。
+- 功能 URL 必须匹配 `/api/v1/tools/{tool_id}/features/{slug}`，`feature` 路径段可含 `/`（如 `mos-manage/vehicle-rules/42`）；在用户侧使用记录中展示 **行为中文名**，需在 manifest 的 `behavior_catalog` 与库表 `Tool.behavior_catalog_json` 中穷举 `key`→`label`，与路由变更同步更新。
+- 合并前在仓库根目录运行：`powershell -File scripts/run-ci-tool-checks.ps1`（manifest + 边界检查）。
+- 新增工具需求可先用 `docs/templates/NEW_TOOL_AGENT_TEMPLATE.md` 填表后 @ 该文件让 Agent 实现。

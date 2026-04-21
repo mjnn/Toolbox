@@ -1,0 +1,7 @@
+{
+  "uat_mos_portal_login_page": {
+    "login_button": "//*[@id=\"main-app\"]/div[2]/div[2]/div/div[4]/form/button",
+    "username_input_box": "//*[@id=\"main-app\"]/div[2]/div[2]/div/div[4]/form/div[1]/div/div/div/input",
+    "password_input_box": "//*[@id=\"main-app\"]/div[2]/div[2]/div/div[4]/form/div[2]/div/div/div/input"
+  }
+}

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>十六进制字符串补齐工具 (800字节)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 850px;
+            margin: 30px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #e0e0e0;
+        }
+        h1 {
+            text-align: center;
+            color: #0056b3;
+            margin-bottom: 25px;
+            font-size: 2em;
+        }
+        p {
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #ccd0d5;
+            border-radius: 6px;
+            font-family: 'Cascadia Code', 'Fira Mono', monospace; /* 程序员友好字体 */
+            font-size: 14px;
+            box-sizing: border-box; /* 使padding和border不增加宽度 */
+            resize: vertical; /* 允许垂直拖动调整大小 */
+            background-color: #fdfdfe;
+         }
+        textarea#resultHex {
+            background-color: #eef1f5;
+            border-color: #c9ced4;
+            color: #2c3e50;
+        }
+        textarea::placeholder {
+            color: #aeb2b7;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s ease;
+            margin-right: 10px;
+            min-width: 120px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:active {
+            background-color: #004085;
+        }
+        button:disabled {
+            background-color: #aabfdf;
+            cursor: not-allowed;
+        }
+        .button-group {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap; /* 适应小屏幕 */
+        }
+        .button-group button:last-child {
+            background-color: #6c757d; /* Clear button */
+        }
+        .button-group button:last-child:hover {
+            background-color: #5a6268;
+        }
+        .button-group button:first-child + button {
+            background-color: #28a745; /* Copy button */
+        }
+        .button-group button:first-child + button:hover {
+            background-color: #218838;
+        }
+        .error-message {
+            color: #dc3545;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .info-message {
+            color: #007bff;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+        .length-info {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: -10px;
+            margin-bottom: 15px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>十六进制字符串补齐工具</h1>
+        <p>此工具用于将您输入的十六进制字符串补齐到800个字节（1600个十六进制字符）的总长度。不足的部分将在末尾填充 '0'。</p>
+        <p>
+            <strong>注意：</strong>
+            一个字节由两个十六进制字符表示。请确保您的输入是有效的十六进制字符（0-9, a-f, A-F），且通常为偶数长度。
+        </p>
+
+        <label for="inputHex">输入您的十六进制字符串:</label>
+        <textarea id="inputHex" placeholder="例如：1a2b3c4d5e6f..."></textarea>
+        <div id="inputHexInfo" class="info-message"></div>
+        <div id="errorMessage" class="error-message"></div>
+
+        <div class="button-group">
+            <button onclick="padHex()">补齐到800字节</button>
+            <button onclick="copyToClipboard()">复制结果</button>
+            <button onclick="clearAll()">清空</button>
+        </div>
+
+        <label for="resultHex">补齐后的十六进制字符串:</label>
+        <textarea id="resultHex" readonly placeholder="补齐后的结果会显示在这里..."></textarea>
+        <div id="resultHexInfo" class="length-info"></div>
+    </div>
+
+    <script>
+        const TARGET_BYTE_LENGTH = 800; // 目标字节数
+        const TARGET_HEX_LENGTH = TARGET_BYTE_LENGTH * 2; // 目标十六进制字符数
+
+        const inputHexElement = document.getElementById('inputHex');
+        const resultHexElement = document.getElementById('resultHex');
+        const errorMessageElement = document.getElementById('errorMessage');
+        const inputHexInfoElement = document.getElementById('inputHexInfo');
+        const resultHexInfoElement = document.getElementById('resultHexInfo');
+
+        // 更新输入框的实时信息
+        inputHexElement.addEventListener('input', updateInputInfo);
+
+        function updateInputInfo() {
+            let input = inputHexElement.value;
+            // 清理掉所有非十六进制字符
+            let cleanInput = input.replace(/[^0-9a-fA-F]/g, '');
+
+            let currentHexLength = cleanInput.length;
+            let currentByteLength = Math.floor(currentHexLength / 2);
+
+            let infoText = `当前已输入十六进制字符: ${currentHexLength} (约 ${currentByteLength} 字节)`;
+
+            if (currentHexLength % 2 !== 0) {
+                 infoText += ` - <span style="color:#d4af37;">注意：奇数长度十六进制可能表示不完整的字节。</span>`;
+            }
+            inputHexInfoElement.innerHTML = infoText;
+            errorMessageElement.textContent = ''; // 清除旧错误信息
+        }
+
+        function padHex() {
+            let inputHex = inputHexElement.value;
+            errorMessageElement.textContent = ''; // 重置错误信息
+
+            // 1. 清理输入：只保留十六进制字符
+            let cleanHex = inputHex.replace(/[^0-9a-fA-F]/g, '');
+
+            if (cleanHex.length === 0 && inputHex.trim().length !== 0) {
+                 errorMessageElement.textContent = '错误：输入不包含任何有效的十六进制字符。';
+                 resultHexElement.value = '';
+                 resultHexInfoElement.textContent = '';
+                 return;
+            }
+            if (cleanHex.length === 0 && inputHex.trim().length === 0) {
+                // 如果是空输入，就直接填充全部的0
+                cleanHex = '';
+            }
+
+            // 2. 将清理后的十六进制字符串转换为大写（可选，但通常有助于统一格式）
+            cleanHex = cleanHex.toUpperCase();
+
+            // 3. 计算当前字节数
+            let currentHexCharLength = cleanHex.length;
+            let currentByteLength = Math.ceil(currentHexCharLength / 2); // 向上取整，确保即使是奇数长度也算作占用字节
+
+            // 4. 判断是否超过目标长度
+            if (currentByteLength > TARGET_BYTE_LENGTH) {
+                errorMessageElement.textContent = `错误：您的输入 (${currentByteLength} 字节) 已经超过了目标 ${TARGET_BYTE_LENGTH} 字节。`;
+                resultHexElement.value = '';
+                resultHexInfoElement.textContent = '';
+                return;
+            }
+
+            // 5. 计算需要补齐的十六进制字符数量
+            let charsToPad = TARGET_HEX_LENGTH - currentHexCharLength;
+
+            // 6. 生成补齐字符串
+            let padding = '';
+            if (charsToPad > 0) {
+                padding = '0'.repeat(charsToPad);
+            }
+
+            // 7. 拼接结果
+            let result = cleanHex + padding;
+            resultHexElement.value = result;
+
+            // 8. 显示结果信息
+            resultHexInfoElement.textContent = `结果长度: ${result.length} 个十六进制字符 (${result.length / 2} 字节)`;
+        }
+
+        function copyToClipboard() {
+            const result = resultHexElement.value;
+            if (result) {
+                navigator.clipboard.writeText(result)
+                    .then(() => {
+                        alert('已成功复制到剪贴板！');
+                    })
+                    .catch(err => {
+                        console.error('复制失败: ', err);
+                        alert('复制失败，请手动复制。');
+                    });
+            } else {
+                alert('没有可复制的结果。请先生成补齐后的十六进制字符串。');
+            }
+        }
+
+        function clearAll() {
+            inputHexElement.value = '';
+            resultHexElement.value = '';
+            errorMessageElement.textContent = '';
+            inputHexInfoElement.textContent = '';
+            resultHexInfoElement.textContent = '';
+            updateInputInfo(); // 执行一次更新，清除提示信息
+        }
+
+        // 页面加载时初始化一次
+        document.addEventListener('DOMContentLoaded', updateInputInfo);
+    </script>
+</body>
+</html>

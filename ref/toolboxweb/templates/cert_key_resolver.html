@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>证书与密钥解析工具</title>
+    <style>
+        /* 这里是您提供的CSS样式 */
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea {
+            width: 100%;
+            min-height: 120px; /* 增加高度以便显示更多信息 */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 使文本框背景更易读 */
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px; /* 增加顶部间距 */
+            justify-content: flex-end; /* 按钮靠右对齐 */
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 1em; /* 调整字体大小 */
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        /* 您的表格样式，这里不会直接用到，但保留*/
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #555;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .error-message {
+            color: #e74c3c;
+            font-weight: bold;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .loading-message {
+            color: #3498db;
+            font-weight: bold;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .download-btn {
+            background-color: #2ecc71;
+        }
+        .download-btn:hover {
+            background-color: #27ae60;
+        }
+        .result-summary {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #dcdcdc;
+            background-color: #eaf7ff;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.95em;
+        }
+        .result-summary hr {
+            border: none;
+            border-top: 1px dashed #c0e0f0;
+            margin: 10px 0;
+        }
+        .result-summary h3 {
+            margin-top: 0;
+            color: #0056b3;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+        }
+        .result-summary p {
+            margin: 5px 0;
+        }
+        .result-summary .success {
+            color: #28a745;
+        }
+        .result-summary .error-detail { /* 修改error类名避免与CSS内置冲突 */
+            color: #dc3545;
+        }
+        .file-input-group {
+            margin-bottom: 15px;
+        }
+        .file-input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .file-input-group input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <h1>证书与密钥解析工具</h1>
+
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>上传并解析</h2>
+            </div>
+            
+            <div class="file-input-group">
+                <label for="certFile">上传证书文件 (.cert, .pem):</label>
+                <input type="file" id="certFile" accept=".cert, .pem">
+            </div>
+
+            <div class="file-input-group">
+                <label for="keyFile">上传密钥文件 (.key, .pem):</label>
+                <input type="file" id="keyFile" accept=".key, .pem">
+            </div>
+
+            <textarea id="output" placeholder="解析结果将显示在这里..." readonly></textarea>
+
+            <div class="result-summary" id="resultSummary" style="display: none;">
+                <!-- 解析概要信息将显示在这里 -->
+            </div>
+
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <!-- 错误信息将显示在这里 -->
+            </div>
+            <div class="loading-message" id="loadingMessage" style="display: none;">
+                <p>正在解析中，请稍候...</p>
+            </div>
+
+            <div class="buttons">
+                <button onclick="parseFiles()">解析</button>
+                <button class="clear-btn" onclick="clearInputs()">清空</button>
+            </div>
+        </div>
+
+        <div class="info">
+            <p><strong>使用说明：</strong></p>
+            <ul>
+                <li>请分别上传证书文件（支持 .cert 或 .pem 格式）和密钥文件（支持 .key 或 .pem 格式）。</li>
+                <li>点击“解析”按钮，后端服务将尝试解析文件内容并显示详细信息。</li>
+                <li>注意：密钥文件仅做格式确认，不会显示私钥内容。</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const outputTextarea = document.getElementById('output');
+        const certFileInput = document.getElementById('certFile');
+        const keyFileInput = document.getElementById('keyFile');
+        const errorMessageDiv = document.getElementById('errorMessage');
+        const loadingMessageDiv = document.getElementById('loadingMessage');
+        const resultSummaryDiv = document.getElementById('resultSummary');
+
+        // 后端API的P地址和端口，请确保与你的Flask应用运行的一致
+        const API_URL = '{{url_for('cert_key_resolver')}}';
+
+        async function parseFiles() {
+            clearMessages(); // 清空之前的消息
+
+            const certFile = certFileInput.files[0];
+            const keyFile = keyFileInput.files[0];
+
+            if (!certFile && !keyFile) {
+                showError('请至少上传一个证书文件或密钥文件。');
+                return;
+            }
+
+            loadingMessageDiv.style.display = 'block'; // 显示加载信息
+            outputTextarea.value = ''; // 清空之前的结果
+            resultSummaryDiv.innerHTML = '';
+            resultSummaryDiv.style.display = 'none';
+
+            const formData = new FormData();
+            if (certFile) {
+                formData.append('cert', certFile);
+            }
+            if (keyFile) {
+                formData.append('key', keyFile);
+            }
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const data = await response.json();
+
+                loadingMessageDiv.style.display = 'none'; // 隐藏加载信息
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    showError(data.error || '解析失败，请检查文件格式。');
+                }
+            } catch (error) {
+                loadingMessageDiv.style.display = 'none'; // 隐藏加载信息
+                console.error('网络请求或解析错误:', error);
+                showError('与后端服务通信失败，请检查服务是否运行或网络连接。');
+            }
+        }
+
+        function displayResults(data) {
+            let outputContent = '';
+            let summaryContent = '';
+            resultSummaryDiv.style.display = 'block';
+
+            if (data.cert_info) {
+                summaryContent += '<h3>证书信息概要:</h3>';
+                summaryContent += `<p><strong>颁发者:</strong> <span class="success">${data.cert_info.issuer}</span></p>`;
+                summaryContent += `<p><strong>主体:</strong> <span class="success">${data.cert_info.subject}</span></p>`;
+                summaryContent += `<p><strong>序列号:</strong> <span class="success">${data.cert_info.serial_number}</span></p>`;
+                summaryContent += `<p><strong>有效期从:</strong> <span class="success">${data.cert_info.not_valid_before}</span></p>`;
+                summaryContent += `<p><strong>有效期至:</strong> <span class="success">${data.cert_info.not_valid_after}</span></p>`;
+                summaryContent += `<p><strong>公钥类型:</strong> <span class="success">${data.cert_info.public_key_type}</span></p>`;
+                summaryContent += `<p><strong>公钥字节数:</strong> <span class="success">${data.cert_info.public_key_size}</span></p>`;
+                summaryContent += `<p><strong>SHA256指纹:</strong> <span class="success">${data.cert_info.fingerprint_sha256}</span></p>`;
+                summaryContent += `<p><strong>PEM格式:</strong> <pre>${data.cert_info.pem_content.substring(0, 200)}... (内容过长已截断)</pre></p>`; // 截取一部分显示
+                outputContent += '--- 证书详情 ---\n\n' + data.cert_info.detailed_text + '\n\n';
+            } else if (data.cert_error) {
+                summaryContent += '<h3>证书解析失败:</h3>';
+                summaryContent += `<p class="error-detail">${data.cert_error}</p>`;
+                outputContent += '--- 证书解析错误 ---\n\n' + data.cert_error + '\n\n';
+            }
+
+            if (data.key_info) {
+                summaryContent += (summaryContent ? '<hr>' : '') + '<h3>密钥信息概要:</h3>';
+                summaryContent += `<p><strong>密钥类型:</strong> <span class="success">${data.key_info.key_type}</span></p>`;
+                summaryContent += `<p><strong>密钥字节数:</strong> <span class="success">${data.key_info.key_size}</span></p>`;
+                if (data.key_info.public_exponent) {
+                     summaryContent += `<p><strong>公钥指数 (RSA):</strong> <span class="success">${data.key_info.public_exponent}</span></p>`;
+                }
+                summaryContent += `<p><strong>PEM格式:</strong> <pre>${data.key_info.pem_content.substring(0, 200)}... (内容过长已截断)</pre></p>`;
+                outputContent += '--- 密钥详情 ---\n\n' + data.key_info.detailed_text + '\n\n';
+            } else if (data.key_error) {
+                summaryContent += (summaryContent ? '<hr>' : '') + '<h3>密钥解析失败:</h3>';
+                summaryContent += `<p class="error-detail">${data.key_error}</p>`;
+                outputContent += '--- 密钥解析错误 ---\n\n' + data.key_error + '\n\n';
+            }
+            
+            if (!data.cert_info && !data.key_info && !data.cert_error && !data.key_error) {
+                // 如果后端返回空数据，可能是内部错误
+                showError('后端服务未能返回有效的解析结果。');
+            }
+
+            outputTextarea.value = outputContent.trim();
+            resultSummaryDiv.innerHTML = summaryContent.trim();
+        }
+
+        function showError(message) {
+            errorMessageDiv.textContent = message;
+            errorMessageDiv.style.display = 'block';
+            setTimeout(() => { // 几秒后自动隐藏
+                errorMessageDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function clearMessages() {
+            errorMessageDiv.style.display = 'none';
+            loadingMessageDiv.style.display = 'none';
+        }
+
+        function clearInputs() {
+            certFileInput.value = '';
+            keyFileInput.value = '';
+            outputTextarea.value = '';
+            resultSummaryDiv.innerHTML = '';
+            resultSummaryDiv.style.display = 'none';
+            clearMessages();
+        }
+    </script>
+</body>
+</html>

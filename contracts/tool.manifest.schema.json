@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mos-toolbox.local/schemas/tool.manifest.json",
+  "title": "MOSToolboxToolManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tool_key", "feature_slugs"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema $id pointer for editors."
+    },
+    "tool_key": {
+      "type": "string",
+      "description": "Matches Tool.name in the database (stable slug).",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name for docs and tooling; UI may use getToolDisplayName instead."
+    },
+    "feature_slugs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_/-]+$"
+      },
+      "description": "Slug segments under /api/v1/tools/{id}/features/{slug} or nested paths like mos-manage/vehicle-rules"
+    },
+    "behavior_catalog": {
+      "type": "array",
+      "description": "Enumeration of user-visible behaviors for usage logs; key must match URL segment after /features/.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label"],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_/-]+$"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "frontend": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "detail_panel_module": {
+          "type": "string",
+          "description": "Registry key for the tool detail panel (see frontend/src/tools/registry.ts)."
+        },
+        "manage_tab_modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "label", "module"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "label": { "type": "string" },
+              "module": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

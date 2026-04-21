@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IAM X509证书查询签发解析相关工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        /* 以下为可编辑的 textarea 样式 */
+        textarea.editable {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #fff; /* 可编辑文本框背景色为白色 */
+            margin-bottom: 10px; /* 添加底部外边距 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        input[type="file"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            background-color: #fff;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71;
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #444;
+            max-height: 300px;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+
+        /* 新增的CSR/Cert解析结果展示样式 */
+        .result-dl {
+            margin-top: 10px;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #fcfcfc;
+        }
+        .result-dl dt {
+            font-weight: bold;
+            color: #333;
+            margin-top: 8px;
+        }
+        .result-dl dd {
+            margin-left: 20px;
+            margin-bottom: 5px;
+            color: #666;
+            word-break: break-all; /* 防止长字符串溢出 */
+        }
+        .result-dl dd pre {
+            background-color: #eee;
+            padding: 5px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            color: #444;
+            tab-size: 4; /* Preserve tab indentation if any */
+            -moz-tab-size: 4;
+            max-height: 200px; /* 限制PEM格式显示高度 */
+        }
+        .parsed-info-block h3 {
+            color: #3498db;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .parsed-info-block ul {
+            list-style-type: disc;
+            margin-left: 20px;
+            padding-left: 0;
+        }
+        .parsed-info-block ul li {
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <h1>IAM X509证书查询签发解析相关工具</h1>
+
+    <div class="container">
+        <!-- 功能1: 检查指定IAM后台是否签发过证书 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>检查现有证书</h2>
+            </div>
+            <div class="input-group">
+                <label for="iamSnInput">IAM SN (可以输入多个，用英文逗号隔开):</label>
+                <input type="text" id="iamSnInput" placeholder="例如: LS25827A09270004,LS25508A09308015">
+            </div>
+            <div class="buttons">
+                <button id="checkCertBtn">检查证书</button>
+                <button class="clear-btn" id="clearSnInputBtn">清空</button>
+            </div>
+            <div id="checkCertMessage" style="margin-top: 10px;"></div>
+            <!-- 新增：后端响应结果显示框 -->
+            <label style="margin-top: 15px;">后端响应结果:</label>
+            <div id="checkCertOutput" class="output-area"></div>
+            <div id="checkCertDownloadArea"></div>
+        </div>
+
+        <!-- 功能2: 签发新证书 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>批量签发新证书</h2>
+            </div>
+            <div class="input-group">
+                <label for="csrFileInput">上传包含多组十六进制CSR字符串的TXT文件:</label>
+                <input type="file" id="csrFileInput" accept=".txt">
+                <small>文件内容中的空格和换行符会自动清除。此处CSR为3103AF0B直接读取返回的十六进制值（包括71正反馈在内）。</small>
+            </div>
+            <!-- 手动输入CSR的文本框 -->
+            <div class="input-group">
+                <label for="csrTextInput">或手动输入CSR (多个用英文逗号隔开):</label>
+                <textarea id="csrTextInput" class="editable" placeholder="例如: 7103AF0B...,另一组CSR的十六进制字符串..." rows="5"></textarea>
+                <small>手动输入的CSR会覆盖文件上传的内容。如果两者都提供，只使用手动输入框的内容。</small>
+            </div>
+            <div class="buttons">
+                <button id="signCertBtn">签发证书</button>
+                <button class="clear-btn" id="clearCsrInputBtn">清空</button>
+            </div>
+            <div id="signCertMessage" style="margin-top: 10px;"></div>
+            <label style="margin-top: 15px;">后端响应结果:</label>
+            <div id="signCertOutput" class="output-area"></div>
+            <div id="signCertDownloadArea"></div>
+        </div>
+
+        <!-- 功能3: CSR解析工具 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>解析CSR十六进制字符串</h2>
+            </div>
+            <div class="input-group">
+                <label for="csrParseInput">输入完整的CSR十六进制字符串 (支持7103AF0B, 3330或3081开头):</label>
+                <textarea id="csrParseInput" class="editable" placeholder="例如: 7103AF0B... 或 3330... 或 3081..." rows="8"></textarea>
+                <small>请确保输入的是完整的CSR十六进制字符串。会尝试自动识别并解析。</small>
+            </div>
+            <div class="buttons">
+                <button id="parseCsrBtn">解析CSR</button>
+                <button class="clear-btn" id="clearCsrParseInputBtn">清空</button>
+            </div>
+            <div id="parseCsrMessage" style="margin-top: 10px;"></div>
+            <label style="margin-top: 15px;">解析结果:</label>
+            <div id="parseCsrOutput" class="output-area"></div>
+            <div id="parseCsrDownloadArea"></div>
+        </div>
+
+        <!-- 功能4: X509证书解析工具 (新增模块) -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>解析X509证书十六进制字符串</h2>
+            </div>
+            <div class="input-group">
+                <label for="parseX509CertInput">输入完整的X509证书十六进制字符串:</label>
+                <textarea id="parseX509CertInput" class="editable" placeholder="例如: 3082... (证书的DER编码十六进制)" rows="8"></textarea>
+                <small>请确保输入的是完整的X509证书的DER编码十六进制字符串。</small>
+            </div>
+            <div class="buttons">
+                <button id="parseX509CertBtn">解析证书</button>
+                <button class="clear-btn" id="clearX509CertInputBtn">清空</button>
+            </div>
+            <div id="parseX509CertMessage" style="margin-top: 10px;"></div>
+            <label style="margin-top: 15px;">解析结果:</label>
+            <div id="parseX509CertOutput" class="output-area"></div>
+            <div id="parseX509CertDownloadArea"></div>
+        </div>
+        <!-- 新增模块结束 -->
+
+    </div>
+
+    <div class="info">
+        <p>注意: CSR为3103AF0B直接读取返回的十六进制值（包括71正反馈在内），后端会进行转为字符串的处理不需要用户自己处理。</p>
+        <p>&copy; 2025 IAM X509证书工具 by MaJienuona@csvw.com</p>
+    </div>
+
+    <script>
+        // Jinja2 模板占位符，在Flask渲染时会被替换为实际的URL
+        const CHECK_CERT_URL = "{{ url_for('signed_iam_x509_cert_check') }}";
+        const SIGN_CERT_URL = "{{ url_for('get_signed_iam_x509_cert') }}";
+        const PARSE_CSR_URL = "{{ url_for('x509_csr_parse') }}";
+        const PARSE_X509_CERT_URL = "{{ url_for('x509_cert_parse') }}"; // 新增的X509证书解析URL
+
+
+        // 获取DOM元素 - 现有功能
+        const iamSnInput = document.getElementById('iamSnInput');
+        const checkCertBtn = document.getElementById('checkCertBtn');
+        const clearSnInputBtn = document.getElementById('clearSnInputBtn');
+        const checkCertMessage = document.getElementById('checkCertMessage');
+        const checkCertOutput = document.getElementById('checkCertOutput');
+        const checkCertDownloadArea = document.getElementById('checkCertDownloadArea');
+
+        const csrFileInput = document.getElementById('csrFileInput');
+        const csrTextInput = document.getElementById('csrTextInput');
+        const signCertBtn = document.getElementById('signCertBtn');
+        const clearCsrInputBtn = document.getElementById('clearCsrInputBtn');
+        const signCertMessage = document.getElementById('signCertMessage');
+        const signCertOutput = document.getElementById('signCertOutput');
+        const signCertDownloadArea = document.getElementById('signCertDownloadArea');
+
+        // 获取DOM元素 - CSR解析功能
+        const csrParseInput = document.getElementById('csrParseInput');
+        const parseCsrBtn = document.getElementById('parseCsrBtn');
+        const clearCsrParseInputBtn = document.getElementById('clearCsrParseInputBtn');
+        const parseCsrMessage = document.getElementById('parseCsrMessage');
+        const parseCsrOutput = document.getElementById('parseCsrOutput');
+        const parseCsrDownloadArea = document.getElementById('parseCsrDownloadArea');
+
+        // 获取DOM元素 - 新增的X509证书解析功能
+        const parseX509CertInput = document.getElementById('parseX509CertInput');
+        const parseX509CertBtn = document.getElementById('parseX509CertBtn');
+        const clearX509CertInputBtn = document.getElementById('clearX509CertInputBtn');
+        const parseX509CertMessage = document.getElementById('parseX509CertMessage');
+        const parseX509CertOutput = document.getElementById('parseX509CertOutput');
+        const parseX509CertDownloadArea = document.getElementById('parseX509CertDownloadArea');
+
+
+        // --- 辅助函数 ---
+
+        /**
+         * 显示消息
+         * @param {HTMLElement} element 消息要显示到的DOM元素
+         * @param {string} message 消息内容
+         * @param {string} type 消息类型 ('success', 'error', 'info')
+         */
+        function displayMessage(element, message, type = 'info') {
+            element.textContent = message;
+            element.className = ''; // 清除旧的样式
+            if (type === 'success') {
+                element.classList.add('success');
+            } else if (type === 'error') {
+                element.classList.add('error');
+            } else {
+                // Info or default
+            }
+        }
+
+        /**
+         * 创建并显示下载链接
+         * @param {any} data 要下载的数据 (通常是JSON对象)
+         * @param {string} filename 下载的文件名
+         * @param {HTMLElement} parentElement 下载链接的父元素
+         * @param {string} linkText 链接文本 (默认为 "下载文件")
+         */
+        function createDownloadLink(data, filename, parentElement, linkText = '下载签发证书JSON') {
+            parentElement.innerHTML = ''; // 清空之前的链接
+            const jsonData = JSON.stringify(data, null, 2);
+            const blob = new Blob([jsonData], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.textContent = linkText;
+            a.classList.add('download-link'); // 使用CSS样式
+            parentElement.appendChild(a);
+
+            // 及时释放URL对象，避免内存泄漏
+            a.onclick = () => {
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+            };
+        }
+
+        // 辅助函数：将snake_case键转换为Title Case，更易读
+        function formatKey(key) {
+            return key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+        }
+
+        /**
+         * 递归地将对象转换为HTML描述列表 (dl)
+         * 特别处理 pem_format, 数组和其他对象
+         * @param {object} obj - 要转换的对象
+         * @returns {string} HTML 字符串
+         */
+        function objectToHtmlDescriptionList(obj, depth = 0) {
+            if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+                 return String(obj); // 如果不是对象，直接返回其字符串表示
+            }
+            let html = `<dl class="result-dl" style="margin-left: ${depth * 10}px;">`;
+            for (const key in obj) {
+                if (Object.hasOwnProperty.call(obj, key)) {
+                    let value = obj[key];
+                    let displayValue;
+
+                    if (key === 'pem_format' || key === 'pem_certificate') {
+                        // 对于PEM格式的字符串，使用 <pre> 标签显示，限制高度
+                        displayValue = `<pre>${value}</pre>`;
+                    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        // 递归处理嵌套对象
+                        displayValue = objectToHtmlDescriptionList(value, depth + 1);
+                    } else if (Array.isArray(value)) {
+                        // 处理数组 (例如 extendedKeyUsage)
+                        if (value.length > 0) {
+                            displayValue = '<ul>' + value.map(item =>
+                                `<li>${typeof item === 'object' ? JSON.stringify(item, null, 2) : item}</li>`
+                            ).join('') + '</ul>';
+                        } else {
+                            displayValue = '无';
+                        }
+                    } else if (typeof value === 'boolean') {
+                        // 处理布尔值
+                        displayValue = value ? '是' : '否';
+                    }
+                    else {
+                        displayValue = value;
+                    }
+                    html += `<dt>${formatKey(key)}:</dt><dd>${displayValue}</dd>`;
+                }
+            }
+            html += '</dl>';
+            return html;
+        }
+
+        // --- 功能1: 检查现有证书 --- (保持不变)
+
+        checkCertBtn.addEventListener('click', async () => {
+            checkCertMessage.innerHTML = '';
+            checkCertOutput.textContent = ''; // 清空输出框
+            checkCertDownloadArea.innerHTML = '';
+            const iamSnString = iamSnInput.value.trim();
+
+            if (!iamSnString) {
+                displayMessage(checkCertMessage, '请输入IAM SN！', 'error');
+                return;
+            }
+
+            const iamSns = iamSnString.split(',').map(sn => sn.trim()).filter(sn => sn !== '');
+            if (iamSns.length === 0) {
+                displayMessage(checkCertMessage, '请输入有效的IAM SN！', 'error');
+                return;
+            }
+
+            displayMessage(checkCertMessage, '正在检查中，请稍候...', 'info');
+
+            try {
+                const response = await fetch(CHECK_CERT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ iamSns: iamSns }) // 请确保后端期望的key是 'iamSns'
+                });
+
+                if (response.status === 404) {
+                    displayMessage(checkCertMessage, '未找到指定IAM SN的证书。', 'error');
+                    checkCertOutput.textContent = JSON.stringify({ status: 404, message: "No certificates found for the provided IAM SNs." }, null, 2);
+                } else if (response.ok) { // 200 OK
+                    const data = await response.json();
+                    checkCertOutput.textContent = JSON.stringify(data, null, 2); // 格式化显示JSON
+                    displayMessage(checkCertMessage, '证书检查成功，提供下载。', 'success');
+                    createDownloadLink(data, 'signed_iam_certs.json', checkCertDownloadArea, '下载已签发证书数据');
+                } else {
+                    const errorData = await response.json().catch(() => response.text()); // 尝试解析JSON，否则获取文本
+                    checkCertOutput.textContent = JSON.stringify(errorData, null, 2); // 显示后端返回的错误内容
+                    displayMessage(checkCertMessage, `检查失败: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                console.error('检查证书发生错误:', error);
+                checkCertOutput.textContent = `网络错误: ${error.message}`;
+                displayMessage(checkCertMessage, `网络请求失败: ${error.message}`, 'error');
+            }
+        });
+
+        clearSnInputBtn.addEventListener('click', () => {
+            iamSnInput.value = '';
+            checkCertMessage.innerHTML = '';
+            checkCertOutput.textContent = ''; // 清空输出框
+            checkCertDownloadArea.innerHTML = '';
+        });
+
+
+        // --- 功能2: 签发新证书 --- (保持不变)
+
+        signCertBtn.addEventListener('click', async () => {
+            signCertMessage.innerHTML = '';
+            signCertOutput.textContent = '';
+            signCertDownloadArea.innerHTML = '';
+
+            let rawCsrString = ''; // 存储原始的CSR字符串，无论是来自文件还是手动输入
+            const manualInput = csrTextInput.value.trim();
+            const file = csrFileInput.files[0];
+
+            if (manualInput) {
+                // 优先使用手动输入的CSR
+                rawCsrString = manualInput;
+                displayMessage(signCertMessage, '正在处理手动输入的CSR数据...', 'info');
+            } else if (file) {
+                // 如果没有手动输入，则检查文件上传
+                if (file.type !== 'text/plain') {
+                    displayMessage(signCertMessage, '请上传TXT格式的文件！', 'error');
+                    return;
+                }
+                displayMessage(signCertMessage, '正在读取文件并进行校验...', 'info');
+
+                // 使用 Promise 封装 FileReader，以便可以 await
+                try {
+                    rawCsrString = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.onerror = (e) => reject(e);
+                        reader.readAsText(file);
+                    });
+                } catch (error) {
+                    displayMessage(signCertMessage, `文件读取失败: ${error.message}`, 'error');
+                    return;
+                }
+            } else {
+                displayMessage(signCertMessage, '请手动输入CSR或上传包含CSR的TXT文件！', 'error');
+                return;
+            }
+
+            // 对获取到的原始CSR字符串进行处理 (无论是手动输入还是文件内容)
+            let fileContent = rawCsrString.replace(/\s/g, ''); // 移除所有空格、制表符、换页符、换行符等空白字符
+            let csrs = fileContent.split(',').map(s => s.trim()).filter(s => s !== '');
+
+            if (csrs.length === 0) {
+                displayMessage(signCertMessage, '获取到的CSR内容为空或未包含有效的CSR字符串！', 'error');
+                return;
+            }
+
+            // 简单的十六进制字符串校验
+            const hexRegex = /^[0-9a-fA-F]+$/;
+            const invalidCsrs = csrs.filter(csr => !hexRegex.test(csr));
+
+            if (invalidCsrs.length > 0) {
+                displayMessage(signCertMessage, `检测到无效的十六进制CSR字符串: ${invalidCsrs.slice(0, 5).join(', ')}... 请检查内容。`, 'error');
+                return;
+            }
+
+            displayMessage(signCertMessage, 'CSR数据校验通过，正在向后端发送请求...', 'info');
+
+            try {
+                const response = await fetch(SIGN_CERT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ csrs: csrs }) // 封装成列表形式的JSON
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    signCertOutput.textContent = JSON.stringify(data, null, 2); // 格式化显示JSON
+                    displayMessage(signCertMessage, '请求成功！请查看下方响应', 'success');
+                    createDownloadLink(data, 'signed_certs_result.json', signCertDownloadArea);
+                } else {
+                    const errorData = await response.json().catch(() => response.text()); // 尝试解析JSON，否则获取文本
+                    signCertOutput.textContent = JSON.stringify(errorData, null, 2); // 显示后端返回的错误内容
+                    displayMessage(signCertMessage, `证书签发失败: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                console.error('签发证书发生错误:', error);
+                signCertOutput.textContent = `网络错误: ${error.message}`;
+                displayMessage(signCertMessage, `网络请求失败: ${error.message}`, 'error');
+            }
+        });
+
+        clearCsrInputBtn.addEventListener('click', () => {
+            csrFileInput.value = ''; // 清空文件选择
+            csrTextInput.value = ''; // 清空手动输入文本框
+            signCertMessage.innerHTML = '';
+            signCertOutput.textContent = '';
+            signCertDownloadArea.innerHTML = '';
+        });
+
+        // --- 功能3: CSR解析模块 ---
+
+        /**
+         * 显示解析后的CSR数据到HTML元素中
+         * @param {object} data 后端返回的CSR解析数据
+         * @param {HTMLElement} element 显示结果的DOM元素
+         */
+        function displayParsedCsrData(data, element) {
+            element.innerHTML = ''; // 清空之前的HTML内容
+
+            if (!data || Object.keys(data).length === 0) {
+                element.textContent = '没有可解析的数据。';
+                return;
+            }
+
+            let htmlContent = '<div class="parsed-info-block">';
+
+            // 主体信息 (Subject Information)
+            htmlContent += '<h3>主体信息 (Subject)</h3>';
+            if (data.subject_info) {
+                htmlContent += objectToHtmlDescriptionList(data.subject_info);
+            } else {
+                htmlContent += '<p>— 无主体信息 —</p>';
+            }
+
+            // 主体DN字符串 (Subject DN String)
+            htmlContent += '<h3>主体DN字符串</h3>';
+            htmlContent += `<p>${data.subject_dn_string || 'N/A'}</p>`;
+
+            // 公钥信息 (Public Key Information)
+            htmlContent += '<h3>公钥信息 (Public Key)</h3>';
+            if (data.public_key) {
+                htmlContent += objectToHtmlDescriptionList(data.public_key);
+            } else {
+                htmlContent += '<p>— 无公钥信息 —</p>';
+            }
+
+            // 签名信息 (Signature Information)
+            htmlContent += '<h3>签名信息</h3>';
+            // 组合签名相关字段，并格式化 is_signature_valid
+            htmlContent += objectToHtmlDescriptionList({
+                "signature_algorithm": data.signature_algorithm || 'N/A',
+                "signature_hash_algorithm": data.signature_hash_algorithm || 'N/A',
+                "is_signature_valid": data.is_signature_valid !== undefined
+                    ? (data.is_signature_valid ? `<span class="success">有效</span>` : `<span class="error">无效</span>`)
+                    : 'N/A'
+            });
+
+            // 扩展信息 (Extensions)
+            htmlContent += '<h3>扩展信息 (Extensions)</h3>';
+            if (data.extensions && Array.isArray(data.extensions) && data.extensions.length > 0) {
+                htmlContent += '<ul>';
+                data.extensions.forEach(ext => {
+                    htmlContent += `<li><strong>${ext.name ? formatKey(ext.name) : '未知扩展'} (${ext.oid || 'N/A'})</strong>`;
+                    if (ext.critical !== undefined) htmlContent += ` (关键: ${ext.critical ? '是' : '否'})`;
+                    // 对扩展的值进行更智能的显示
+                    if (typeof ext.value === 'object' && ext.value !== null) {
+                        htmlContent += objectToHtmlDescriptionList(ext.value, 1); // 递归显示嵌套对象
+                    } else if (Array.isArray(ext.value) && ext.value.length > 0) {
+                         htmlContent += '<ul>' + ext.value.map(item =>
+                            `<li>${typeof item === 'object' ? JSON.stringify(item, null, 2) : item}</li>`
+                         ).join('') + '</ul>';
+                    } else if (ext.value_string) {
+                        htmlContent += `<br><strong>值:</strong> <pre>${ext.value_string}</pre>`;
+                    } else if (ext.value) {
+                         htmlContent += `<br><strong>值:</strong> <span>${ext.value}</span>`;
+                    } else {
+                        htmlContent += `<br><strong>值:</strong> N/A`;
+                    }
+                    htmlContent += '</li>';
+                });
+                htmlContent += '</ul>';
+            } else {
+                htmlContent += '<p>— 无扩展信息 —</p>';
+            }
+
+            htmlContent += '</div>';
+            element.innerHTML = htmlContent;
+        }
+
+
+        // CSR解析按钮事件监听器
+        parseCsrBtn.addEventListener('click', async () => {
+            parseCsrMessage.innerHTML = '';
+            parseCsrOutput.innerHTML = ''; // 清空输出框，因为会填充HTML
+            parseCsrDownloadArea.innerHTML = '';
+            const csrHex = csrParseInput.value.trim();
+
+            if (!csrHex) {
+                displayMessage(parseCsrMessage, '请输入CSR十六进制字符串！', 'error');
+                return;
+            }
+
+            // 清理并进行基本的十六进制字符校验
+            const cleanedCsrHex = csrHex.replace(/\s/g, ''); // 移除所有空白字符
+            if (!/^[0-9a-fA-F]+$/.test(cleanedCsrHex)) {
+                displayMessage(parseCsrMessage, '输入的不是有效的十六进制字符串，请检查！', 'error');
+                return;
+            }
+
+            displayMessage(parseCsrMessage, '正在解析中，请稍候...', 'info');
+
+            try {
+                const response = await fetch(PARSE_CSR_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ csr: cleanedCsrHex }) // 发送清理后的十六进制字符串
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayParsedCsrData(data, parseCsrOutput); // 调用新函数显示结构化数据
+                    displayMessage(parseCsrMessage, 'CSR解析成功。', 'success');
+                    createDownloadLink(data, 'parsed_csr_result.json', parseCsrDownloadArea, '下载解析结果JSON');
+                } else {
+                    const errorData = await response.json().catch(() => response.text());
+                    // 如果后端返回的是错误JSON，显示它；否则显示原始错误文本
+                    parseCsrOutput.textContent = JSON.stringify(errorData, null, 2);
+                    displayMessage(parseCsrMessage, `CSR解析失败: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                console.error('解析CSR发生错误:', error);
+                parseCsrOutput.textContent = `网络错误: ${error.message}`;
+                displayMessage(parseCsrMessage, `网络请求失败: ${error.message}`, 'error');
+            }
+        });
+
+        // 清空CSR解析输入框和结果
+        clearCsrParseInputBtn.addEventListener('click', () => {
+            csrParseInput.value = '';
+            parseCsrMessage.innerHTML = '';
+            parseCsrOutput.innerHTML = ''; // 清空HTML内容
+            parseCsrDownloadArea.innerHTML = '';
+        });
+
+
+        // --- 新增功能: X.509证书解析模块 ---
+
+        /**
+         * 显示解析后的X.509证书数据到HTML元素中
+         * @param {object} data 后端返回的X.509证书解析数据
+         * @param {HTMLElement} element 显示结果的DOM元素
+         */
+        function displayParsedX509CertData(data, element) {
+            element.innerHTML = ''; // 清空之前的HTML内容
+
+            if (!data || Object.keys(data).length === 0) {
+                element.textContent = '没有可解析的证书数据。';
+                return;
+            }
+
+            let htmlContent = '<div class="parsed-info-block">';
+
+            // 基本信息
+            htmlContent += '<h3>基本信息</h3>';
+            htmlContent += objectToHtmlDescriptionList({
+                "版本": data.version || 'N/A',
+                "序列号": data.serial_number || 'N/A',
+                "生效时间 (UTC)": data.not_valid_before || 'N/A',
+                "失效时间 (UTC)": data.not_valid_after || 'N/A'
+            });
+
+            // 颁发者信息 (Issuer)
+            htmlContent += '<h3>颁发者信息 (Issuer)</h3>';
+            if (data.issuer) {
+                htmlContent += objectToHtmlDescriptionList(data.issuer);
+            } else {
+                htmlContent += '<p>— 无颁发者信息 —</p>';
+            }
+
+            // 主体信息 (Subject)
+            htmlContent += '<h3>主体信息 (Subject)</h3>';
+            if (data.subject) {
+                htmlContent += objectToHtmlDescriptionList(data.subject);
+            } else {
+                htmlContent += '<p>— 无主体信息 —</p>';
+            }
+
+            // 公钥信息 (Public Key)
+            htmlContent += '<h3>公钥信息 (Public Key)</h3>';
+            if (data.public_key) {
+                htmlContent += objectToHtmlDescriptionList(data.public_key);
+            } else {
+                htmlContent += '<p>— 无公钥信息 —</p>';
+            }
+
+            // 签名信息 (Signature)
+            htmlContent += '<h3>签名信息</h3>';
+            htmlContent += objectToHtmlDescriptionList({
+                "签名算法OID": data.signature_algorithm_oid || 'N/A',
+                "签名哈希算法": data.signature_hash_algorithm || 'N/A'
+            });
+
+            // 扩展信息 (Extensions)
+            htmlContent += '<h3>扩展信息 (Extensions)</h3>';
+            if (data.extensions && Array.isArray(data.extensions) && data.extensions.length > 0) {
+                htmlContent += '<ul>';
+                data.extensions.forEach(ext => {
+                    htmlContent += `<li><strong>${ext.name ? formatKey(ext.name) : '未知扩展'} (${ext.oid || 'N/A'})</strong>`;
+                    if (ext.critical !== undefined) htmlContent += ` (关键: ${ext.critical ? '是' : '否'})`;
+                    // 对扩展的值进行更智能的显示
+                    if (typeof ext.value === 'object' && ext.value !== null) {
+                        htmlContent += objectToHtmlDescriptionList(ext.value, 1); // 递归显示嵌套对象
+                    } else if (Array.isArray(ext.value) && ext.value.length > 0) {
+                         htmlContent += '<ul>' + ext.value.map(item =>
+                            `<li>${typeof item === 'object' ? JSON.stringify(item, null, 2) : item}</li>`
+                         ).join('') + '</ul>';
+                    } else if (ext.value_string) {
+                        htmlContent += `<br><strong>值:</strong> <pre>${ext.value_string}</pre>`;
+                    } else if (ext.value) {
+                         htmlContent += `<br><strong>值:</strong> <span>${ext.value}</span>`;
+                    } else {
+                        htmlContent += `<br><strong>值:</strong> N/A`;
+                    }
+                    htmlContent += '</li>';
+                });
+                htmlContent += '</ul>';
+            } else {
+                htmlContent += '<p>— 无扩展信息 —</p>';
+            }
+
+            // PEM 格式证书
+            htmlContent += '<h3>PEM 格式证书</h3>';
+            if (data.pem_certificate) {
+                htmlContent += `<pre class="result-dl" style="padding:10px; border-radius:4px; background-color:#fefefe; overflow-x:auto;">${data.pem_certificate}</pre>`;
+            } else {
+                htmlContent += '<p>— 无PEM格式证书 —</p>';
+            }
+
+
+            htmlContent += '</div>';
+            element.innerHTML = htmlContent;
+        }
+
+
+        // X509证书解析按钮事件监听器
+        parseX509CertBtn.addEventListener('click', async () => {
+            parseX509CertMessage.innerHTML = '';
+            parseX509CertOutput.innerHTML = '';
+            parseX509CertDownloadArea.innerHTML = '';
+            const certHex = parseX509CertInput.value.trim();
+
+            if (!certHex) {
+                displayMessage(parseX509CertMessage, '请输入X509证书十六进制字符串！', 'error');
+                return;
+            }
+
+            const cleanedCertHex = certHex.replace(/\s/g, ''); // 移除所有空白字符
+            if (!/^[0-9a-fA-F]+$/.test(cleanedCertHex)) {
+                displayMessage(parseX509CertMessage, '输入的不是有效的十六进制字符串，请检查！', 'error');
+                return;
+            }
+
+            displayMessage(parseX509CertMessage, '正在解析中，请稍候...', 'info');
+
+            try {
+                const response = await fetch(PARSE_X509_CERT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ cert: cleanedCertHex })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayParsedX509CertData(data, parseX509CertOutput); // 调用新函数显示结构化数据
+                    displayMessage(parseX509CertMessage, 'X509证书解析成功。', 'success');
+                    createDownloadLink(data, 'parsed_x509_cert_result.json', parseX509CertDownloadArea, '下载解析结果JSON');
+                } else {
+                    const errorData = await response.json().catch(() => response.text());
+                    parseX509CertOutput.textContent = JSON.stringify(errorData, null, 2);
+                    displayMessage(parseX509CertMessage, `X509证书解析失败: ${response.status} - ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                console.error('解析X509证书发生错误:', error);
+                parseX509CertOutput.textContent = `网络错误: ${error.message}`;
+                displayMessage(parseX509CertMessage, `网络请求失败: ${error.message}`, 'error');
+            }
+        });
+
+        // 清空X509证书解析输入框和结果
+        clearX509CertInputBtn.addEventListener('click', () => {
+            parseX509CertInput.value = '';
+            parseX509CertMessage.innerHTML = '';
+            parseX509CertOutput.innerHTML = '';
+            parseX509CertDownloadArea.innerHTML = '';
+        });
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIN 信息查询工具</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            color: #555;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .error-message {
+            color: #e74c3c;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .loading-message {
+            color: #3498db;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .download-btn {
+            background-color: #2ecc71;
+        }
+        .download-btn:hover {
+            background-color: #27ae60;
+        }
+        .result-summary {
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px solid #dcdcdc;
+            background-color: #eaf7ff;
+            border-radius: 4px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .result-summary p {
+            margin: 5px 0;
+        }
+        .result-summary .success {
+            color: #28a745;
+        }
+        .result-summary .error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <h1>VIN 信息查询工具</h1>
+
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>VIN 查询</h2>
+            </div>
+            
+            <div>
+                <h3>输入 VIN (每行一个VIN)：</h3>
+                <textarea id="vinInput" placeholder="请输入 VIN (例如: LFVHF123456789012)。一行一个 VIN"></textarea>
+                <div class="buttons">
+                    <button id="queryBtn">查询</button>
+                    <button id="clearBtn" class="clear-btn">清空</button>
+                </div>
+            </div>
+
+            <div>
+                <h3>查询结果摘要：</h3>
+                <div class="buttons">
+                    <!-- 更改按钮ID和文本 -->
+                    <button id="downloadMultipleCsvBtn" class="download-btn" style="display: none;">下载 CSV (每个VIN一个文件)</button>
+                </div>
+                
+                <div id="resultOutput" class="result-summary">
+                    <!-- 查询结果摘要将显示在这里 -->
+                </div>
+                <div id="statusMessage" class="error-message">
+                    <!-- 错误或加载信息将显示在这里 -->
+                </div>
+            </div>
+
+            <div class="info">
+                这是一个用于查询车辆 VIN 信息的工具。
+                输入 VIN 后，点击查询按钮，系统将调用后端 API 获取相关信息并以列表形式展示。
+                下载按钮将为每个成功查询或有错误信息的 VIN 生成一个独立的 CSV 文件。
+            </div>
+        </div>
+    </div>
+
+    <!-- 移除 xlsx 库的引入 -->
+
+    <script>
+        const vinInput = document.getElementById('vinInput');
+        const queryBtn = document.getElementById('queryBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resultOutput = document.getElementById('resultOutput');
+        const statusMessage = document.getElementById('statusMessage');
+        // 更新按钮 ID
+        const downloadMultipleCsvBtn = document.getElementById('downloadMultipleCsvBtn'); 
+
+        // currentQueryResultData 存储的是一个包含每个 VIN 结果的对象数组
+        // 示例: [{ vin: 'VIN1', data: {工位:[], ...} }, { vin: 'VIN2', error: '未查询到任何信息' }]
+        // 或者 { vin: 'VIN3', data: {工位:[], ...} (但其中工位数组为空，表示无结果)}
+        let currentQueryResultData = []; 
+        
+        // **请将此地址替换为你的真实后端 POST API 地址**
+        // 使用你 Jinja2 模板渲染后的实际 URL
+        const REAL_API_URL = '{{url_for("query_product_line_check_point")}}'; 
+        // 例如：
+        // const REAL_API_URL = 'http://localhost:5000/query_product_line_check_point';
+
+        /**
+         * 帮助函数：对CSV中的值进行转义处理
+         * 主要处理包含逗号、双引号或换行符的值
+         * @param {string} value 需要转义的字符串
+         * @returns {string} 转义后的字符串
+         */
+        function escapeCsvValue(value) {
+            const stringValue = String(value); // 确保是字符串
+            // 如果包含逗号、双引号或换行符，则需要用双引号包裹
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n') || stringValue.includes('\r')) {
+                // 将内部的双引号替换为两个双引号进行转义
+                const escapedValue = stringValue.replace(/"/g, '""');
+                return `"${escapedValue}"`; // 用双引号包裹
+            }
+            return stringValue; // 无需转义
+        }
+
+        /**
+         * 将 JSON 数据转换为 CSV 格式的字符串
+         * @param {object} data 符合要求的 JSON 对象
+         * @returns {string} CSV 格式的字符串
+         */
+        function convertToCsv(data) {
+            const headers = ["工位", "状态点", "日期", "时间"];
+            const rows = [];
+
+            // 添加 CSV 标题行
+            rows.push(headers.map(escapeCsvValue).join(','));
+
+            if (!data || data["工位"].length === 0) {
+                // 如果没有数据，只返回表头，或者可以加一行提示信息
+                rows.push("未查询到过点信息");
+                return rows.join('\n');
+            }
+
+            // 添加数据行
+            const rowCount = data["工位"].length;
+            for (let i = 0; i < rowCount; i++) {
+                const row = [
+                    data["工位"][i],
+                    data["状态点"][i],
+                    data["日期"][i],
+                    data["时间"][i]
+                ];
+                rows.push(row.map(escapeCsvValue).join(','));
+            }
+
+            return rows.join('\n');
+        }
+
+
+        queryBtn.addEventListener('click', async () => {
+            const vinInputText = vinInput.value.trim();
+            if (!vinInputText) {
+                statusMessage.textContent = '请输入 VIN.';
+                resultOutput.innerHTML = '';
+                currentQueryResultData = []; 
+                downloadMultipleCsvBtn.style.display = 'none'; 
+                return;
+            }
+
+            // 清理并获取所有唯一的 VIN，忽略空行
+            const vins = vinInputText.split('\n')
+                                    .map(v => v.trim())
+                                    .filter(v => v !== '');
+            if (vins.length === 0) {
+                statusMessage.textContent = '请输入有效的 VIN.';
+                resultOutput.innerHTML = '';
+                currentQueryResultData = []; 
+                downloadMultipleCsvBtn.style.display = 'none'; 
+                return;
+            }
+
+            statusMessage.className = 'loading-message';
+            statusMessage.textContent = `正在查询 ${vins.length} 个 VIN，请稍候...`;
+            resultOutput.innerHTML = ''; 
+            currentQueryResultData = []; 
+            downloadMultipleCsvBtn.style.display = 'none'; 
+
+            try {
+                const response = await fetch(REAL_API_URL, {
+                    method: 'POST', 
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ vins: vins }), // 发送 VIN 数组
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    statusMessage.className = 'error-message';
+                    statusMessage.textContent = `后端API请求失败: HTTP ${response.status} - ${errorText || '未知错误'}`;
+                    // 对于每个请求的VIN记录错误
+                    vins.forEach(vinItem => {
+                        currentQueryResultData.push({ vin: vinItem, error: `请求失败: ${response.status} - ${errorText || '未知错误'}` });
+                    });
+                    return; // 如果整个请求失败，不再处理单个结果
+                }
+
+                const backendResults = await response.json(); // 此时 backendResults 是一个列表
+
+                if (!Array.isArray(backendResults) || backendResults.length !== vins.length) {
+                    statusMessage.className = 'error-message';
+                    statusMessage.textContent = `后端返回的数据结构不符合预期，期望一个与 VIN 数量匹配的列表。实际返回: ${JSON.stringify(backendResults)}`;
+                     // 对于每个请求的VIN记录错误
+                    vins.forEach(vinItem => {
+                        currentQueryResultData.push({ vin: vinItem, error: '后端返回数据结构不符合预期' });
+                    });
+                    return;
+                }
+
+                let summaryHtml = '<h4>查询结果摘要：</h4>';
+                let hasAnyResult = false; // 标记是否有任何结果（成功或错误）用于下载
+
+                // 遍历后端返回的结果，与输入的 VIN 一一对应存储
+                backendResults.forEach((result, index) => {
+                    const originalVin = vins[index];
+                    if (result && result.error) {
+                        currentQueryResultData.push({ vin: originalVin, error: result.error });
+                        summaryHtml += `<p class="error">VIN: <strong>${originalVin}</strong> - ${result.error}</p>`;
+                        hasAnyResult = true; // 即使是错误信息也应该可以被下载
+                    } else {
+                        // 进一步验证数据结构
+                        const requiredKeys = ["工位", "状态点", "日期", "时间"];
+                        const hasAllKeys = requiredKeys.every(key => Object.prototype.hasOwnProperty.call(result, key));
+                        const areAllArrays = requiredKeys.every(key => Array.isArray(result[key]));
+
+                        // 如果所有必需的键都存在且都是数组，但长度不一致，也视为格式问题
+                        const areLengthsConsistent = hasAllKeys && areAllArrays && requiredKeys.every(key => result[key].length === result["工位"].length);
+
+                        if (hasAllKeys && areAllArrays && areLengthsConsistent) {
+                            currentQueryResultData.push({ vin: originalVin, data: result });
+                            summaryHtml += `<p class="success">VIN: <strong>${originalVin}</strong> - 查询成功 (${result["工位"].length} 条记录)</p>`;
+                            hasAnyResult = true;
+                        } else {
+                            // 数据格式不符视为错误
+                            currentQueryResultData.push({ vin: originalVin, error: '后端返回数据格式不符合要求或数据长度不一致' });
+                            summaryHtml += `<p class="error">VIN: <strong>${originalVin}</strong> - 数据格式错误</p>`;
+                            hasAnyResult = true;
+                        }
+                    }
+                });
+
+                resultOutput.innerHTML = summaryHtml;
+
+                if (hasAnyResult) {
+                    statusMessage.textContent = `所有 VIN 查询完成！共 ${currentQueryResultData.length} 个结果，请下载 CSV 文件查看详细。`;
+                    statusMessage.className = '';
+                    downloadMultipleCsvBtn.style.display = 'inline-block'; 
+                } else {
+                    statusMessage.textContent = '未查询到任何结果或所有请求均未能获取到有效响应。';
+                    statusMessage.className = '';
+                    downloadMultipleCsvBtn.style.display = 'none'; 
+                }
+
+            } catch (error) {
+                statusMessage.className = 'error-message';
+                console.error('查询过程中发生错误:', error);
+                statusMessage.textContent = `客户端发生错误: ${error.message}。请检查网络或联系管理员。`;
+                currentQueryResultData = []; 
+                downloadMultipleCsvBtn.style.display = 'none'; 
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            vinInput.value = '';
+            resultOutput.innerHTML = '';
+            statusMessage.textContent = '';
+            currentQueryResultData = []; 
+            downloadMultipleCsvBtn.style.display = 'none'; 
+        });
+
+        // 下载多个 CSV 文件的事件监听器
+        downloadMultipleCsvBtn.addEventListener('click', () => {
+            if (currentQueryResultData.length === 0) {
+                alert('没有数据可供下载！请先进行查询。');
+                return;
+            }
+
+            // 遍历存储的结果，为每个 VIN 生成一个 CSV 文件
+            currentQueryResultData.forEach(item => {
+                let csvContent = "";
+                const downloadVin = item.vin;
+
+                if (item.error) {
+                    // 如果有错误信息，创建一个简单的 CSV，包含 VIN 和错误信息
+                    csvContent = `VIN,错误信息\n${escapeCsvValue(downloadVin)},${escapeCsvValue(item.error)}`;
+                } else if (item.data) {
+                    // 如果有数据，使用 convertToCsv 函数生成内容
+                    csvContent = convertToCsv(item.data);
+                } else {
+                    // 理论上不会发生，作为兜底情况，表示无有效数据
+                    csvContent = `VIN,状态\n${escapeCsvValue(downloadVin)},${escapeCsvValue("无有效数据或未知错误")}`;
+                }
+                
+                // 获取当前日期时间
+                const now = new Date();
+                const date = now.getFullYear() + 
+                             String(now.getMonth() + 1).padStart(2, '0') + 
+                             String(now.getDate()).padStart(2, '0');
+                const time = String(now.getHours()).padStart(2, '0') + 
+                             String(now.getMinutes()).padStart(2, '0') + 
+                             String(now.getSeconds()).padStart(2, '0');
+
+                // 构建文件名：VIN_过点信息查询_日期时间.csv
+                const filename = `${downloadVin}_过点信息查询_${date}${time}.csv`;
+
+                // 创建 Blob 对象并触发下载
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); 
+                const url = URL.createObjectURL(blob); 
+                const a = document.createElement('a'); 
+                a.href = url;
+                a.download = filename; 
+                document.body.appendChild(a); 
+                a.click();
+                document.body.removeChild(a); 
+                URL.revokeObjectURL(url); 
+            });
+             statusMessage.textContent = `已开始下载 ${currentQueryResultData.length} 个 CSV 文件。请检查您的下载文件夹。`;
+             statusMessage.className = 'loading-message'; // 暂时用 loading 样式提示用户下载已开始
+        });
+
+        // 页面初始加载时隐藏下载按钮
+        downloadMultipleCsvBtn.style.display = 'none';
+    </script>
+</body>
+</html>

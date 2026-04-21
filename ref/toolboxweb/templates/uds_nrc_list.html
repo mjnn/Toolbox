@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UDS NRC 查阅清单</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71; /* 使用绿色作为下载按钮 */
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>UDS 诊断 NRC 查阅清单</h1>
+
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>NRC 代码查询</h2>
+            </div>
+            <div class="input-group">
+                <label for="nrcInput">请输入 NRC 代码 (十六进制，例如: 11 或 7F):</label>
+                <input type="text" id="nrcInput" placeholder="例如: 13">
+            </div>
+            <div class="buttons">
+                <button id="lookupBtn">查询</button>
+                <button id="clearBtn" class="clear-btn">清空</button>
+            </div>
+            <div class="info">
+                <p>UDS (统一诊断服务) 允许外部诊断设备与ECU（电子控制单元）进行通信。NRC（Negative Response Code）指示诊断请求未能成功完成的原因。</p>
+            </div>
+        </div>
+
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>查询结果</h2>
+            </div>
+            <div id="resultOutput" class="output-area">
+                <!-- 查询结果将显示在这里 -->
+                请在上方输入NRC代码进行查询。
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // UDS NRC 数据列表 (可以根据需要进行扩充)
+        const nrcData = [
+            { code: "10", name: "General Reject", description: "通常作为其他特定错误代码都不适用时的通用拒绝响应。指示请求无法完成." },
+            { code: "11", name: "Service Not Supported", description: "ECU不支持请求的服务ID." },
+            { code: "12", name: "SubFunction Not Supported", description: "ECU不支持请求服务中的子功能." },
+            { code: "13", name: "Incorrect Message Length Or Invalid Format", description: "请求报文的长度不正确或格式无效." },
+            { code: "21", name: "Busy Repeat Request", description: "ECU当前正忙，无法处理请求。客户端应在稍后重试." },
+            { code: "22", name: "Conditions Not Correct Or Request Sequence Error", description: "执行该服务所需的条件不满足，或请求的服务顺序不正确." },
+            { code: "24", name: "Response Too Long", description: "服务器的响应数据长度超过了客户端可以接收的最大长度." },
+            { code: "25", name: "General Programming Failure", description: "在编程操作期间发生的一般性错误。" },
+            { code: "26", name: "Wrong Block Sequence Counter", description: "在数据传输（如下载或上传）中，数据块序列计数器不正确。" },
+            { code: "31", name: "Request Out Of Range", description: "请求的参数值（如DID、内存地址、数据长度等）超出可接受范围。" },
+            { code: "33", name: "Security Access Denied", description: "尝试执行需要安全访问的服务，但安全访问被拒绝（例如，未解锁或密钥不正确）。" },
+            { code: "35", name: "Invalid Key", description: "在安全访问过程中提供了无效的密钥。" },
+            { code: "36", name: "Exceeded Number Of Attempts", description: "安全访问尝试次数超过了允许的最大次数。" },
+            { code: "37", name: "Required Time Delay Not Expired", description: "安全访问解锁后，需要等待特定时间才能再次尝试，但该时间尚未到期。" },
+            { code: "70", name: "Upload/Download Not Accepted", description: "ECU拒绝启动上传或下载操作." },
+            { code: "71", name: "Transfer Data Suspended", description: "数据传输操作已暂停." },
+            { code: "72", name: "General Read/Write Failure", description: "在读取或写入数据时发生了一般性错误." },
+            { code: "78", name: "Request Correctly Received-Response Pending", description: "请求已正确接收，但ECU正在处理，需要一段时间才能响应。客户端应继续发送TesterPresent消息并等待." },
+            { code: "7F", name: "Service Not Supported In Active Diagnostic Session", description: "请求的服务在该当前的诊断会话中不被支持（例如，在默认会话不能执行某个服务，需要切换到扩展诊断会话）。注意：此NRC通常会附带原始请求的服务ID作为额外字节。" },
+            { code: "80", name: "Temporarily Prevent UDS Message From Being Sent", description: "临时阻止发送UDS报文，通常在ECU忙于其他内部任务时使用。" },
+            { code: "81", name: "Voltage Too High", description: "供电电压过高，ECU无法安全执行请求." },
+            { code: "82", name: "Voltage Too Low", description: "供电电压过低，ECU无法安全执行请求." },
+            { code: "83", name: "Temperature Too High", description: "ECU或相关部件温度过高." },
+            { code: "84", name: "Temperature Too Low", description: "ECU或相关部件温度过低." },
+            { code: "85", name: "Service Not Supported In Selected Diagnostic Session", description: "与7F类似，但在特定诊断会话中明确不支持某个服务。" }
+            // 根据需要添加更多NRC代码...
+        ];
+
+        const nrcInput = document.getElementById('nrcInput');
+        const lookupBtn = document.getElementById('lookupBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resultOutput = document.getElementById('resultOutput');
+
+        function lookupNrc() {
+            const inputVal = nrcInput.value.trim().toUpperCase(); // 转换为大写以便匹配
+            resultOutput.innerHTML = ''; // 清空之前的查询结果
+
+            if (!inputVal) {
+                resultOutput.innerHTML = '<p class="error">请输入一个NRC错误代码。</p>';
+                return;
+            }
+
+            // 验证输入是否为两位十六进制数
+            if (!/^[0-9A-F]{2}$/.test(inputVal)) {
+                resultOutput.innerHTML = '<p class="error">请输入有效的两位十六进制NRC代码 (例如: 13, 7F)。</p>';
+                return;
+            }
+
+            const foundNrc = nrcData.find(item => item.code === inputVal);
+
+            if (foundNrc) {
+                resultOutput.innerHTML = `
+                    <table class="result-table">
+                        <thead>
+                            <tr>
+                                <th>NRC 代码</th>
+                                <th>名称</th>
+                                <th>详细描述</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>0x${foundNrc.code}</td>
+                                <td>${foundNrc.name}</td>
+                                <td>${foundNrc.description}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p class="success" style="margin-top: 15px;">查询成功！</p>
+                `;
+            } else {
+                resultOutput.innerHTML = `<p class="error">未找到代码 0x${inputVal} 的NRC描述。请检查输入或扩充数据列表。</p>`;
+            }
+        }
+
+        function clearInputAndResult() {
+            nrcInput.value = '';
+            resultOutput.innerHTML = '请在上方输入NRC代码进行查询。';
+        }
+
+        lookupBtn.addEventListener('click', lookupNrc);
+        clearBtn.addEventListener('click', clearInputAndResult);
+
+        // 允许按回车键触发查询
+        nrcInput.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                lookupNrc();
+            }
+        });
+    </script>
+</body>
+</html>

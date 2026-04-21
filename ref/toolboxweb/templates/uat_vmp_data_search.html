@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAT C车 VMP数据查询工具</title>
+    <style>
+        /* 您的CSS样式从这里开始 */
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        input[type="text"] {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            table-layout: fixed; /* 固定列宽，方便内容过长时换行 */
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            word-wrap: break-word; /* 允许长单词换行 */
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+            width: 30%; /* 调整键的列宽 */
+        }
+        .result-table td {
+            width: 70%; /* 调整值的列宽 */
+        }
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 15px;
+            background-color: #2ecc71; /* 使用绿色作为下载按钮 */
+            color: white;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background-color 0.3s;
+        }
+        .download-link:hover {
+            background-color: #27ae60;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        /* 您的CSS样式到这里结束 */
+    </style>
+</head>
+<body>
+    <h1>UAT C车 VMP数据查询工具</h1>
+    <div class="container">
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>UAT C车 VMP数据查询</h2>
+            </div>
+            <div class="input-group">
+                <label for="vinInput">VIN:</label>
+                <input type="text" id="vinInput" placeholder="请输入17位VIN码">
+            </div>
+            <div class="input-group">
+                <label for="cduidInput">CDUID:</label>
+                <input type="text" id="cduidInput" placeholder="请输入CDUID">
+            </div>
+            <div class="input-group">
+                <label for="iccidInput">ICCID:</label>
+                <input type="text" id="iccidInput" placeholder="请输入ICCID">
+            </div>
+            <div class="buttons">
+                <button id="searchVinBtn">查询</button>
+                <button class="clear-btn" id="clearBtn">清空</button>
+            </div>
+
+            <h3>查询结果:</h3>
+            <div id="resultOutput" class="output-area">
+                <p>等待查询...</p>
+            </div>
+
+            <!-- 原始响应 (调试用，可选) -->
+            <!-- Uncomment to see raw JSON response -->
+            <!--
+            <h3>原始响应 (调试用):</h3>
+            <div id="rawJsonResponse" class="output-area" style="min-height: 50px;">
+                无
+            </div>
+            -->
+        </div>
+    </div>
+    <div class="info">
+        此工具用于通过VIN、CDUID或ICCID查询UAT C车 VMP车辆信息。至少输入一个查询条件。
+    </div>
+
+    <script>
+        // 注意：这里的 SEARCH_API_URL 应该由后端Flask的Jinja模板引擎渲染
+        // 例如：let SEARCH_API_URL = "{{ url_for('uat_vmp_data_search') }}";
+        // 如果此HTML是单独文件，你需要手动指定后端API的URL
+        let SEARCH_API_URL = "/api/uat_vmp_data_search"; // 假设的API路径
+
+        const vinInput = document.getElementById('vinInput');
+        const cduidInput = document.getElementById('cduidInput'); // 新增CDUID输入框
+        const iccidInput = document.getElementById('iccidInput');
+
+        const searchVinBtn = document.getElementById('searchVinBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const resultOutput = document.getElementById('resultOutput');
+        // const rawJsonResponse = document.getElementById('rawJsonResponse'); // for raw output
+
+        searchVinBtn.addEventListener('click', async () => {
+            // 获取并清理所有输入字段的值
+            const vin = vinInput.value.trim() || null;
+            const cduid = cduidInput.value.trim() || null; // 获取CDUID值
+            const iccid = iccidInput.value.trim() || null;
+
+            // 至少需要一个输入项
+            if (!vin && !cduid && !iccid) {
+                resultOutput.innerHTML = '<p class="error">请至少输入一个查询条件 (VIN, CDUID 或 ICCID)!</p>';
+                return;
+            }
+
+            resultOutput.innerHTML = '<p>正在查询，请稍候...</p>';
+            // if (rawJsonResponse) rawJsonResponse.textContent = '正在请求...';
+
+            try {
+                const response = await fetch(SEARCH_API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        vin: vin,
+                        cduid: cduid, // 将CDUID添加到请求体
+                        iccid: iccid
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                // if (rawJsonResponse) rawJsonResponse.textContent = JSON.stringify(data, null, 2);
+
+                if (data.success) {
+                    displaySuccessResult(data.data, data.message || "查询成功！");
+                } else {
+                    displayErrorResult(data.message || "查询失败！", data.data);
+                }
+
+            } catch (error) {
+                console.error("查询出错:", error);
+                resultOutput.innerHTML = `<p class="error">请求失败: ${error.message}</p>`;
+                // if (rawJsonResponse) rawJsonResponse.textContent = `请求失败: ${error.message}`;
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            vinInput.value = '';
+            cduidInput.value = ''; // 清空CDUID输入框
+            iccidInput.value = '';
+            resultOutput.innerHTML = '<p>等待查询...</p>';
+            // if (rawJsonResponse) rawJsonResponse.textContent = '无';
+        });
+
+        /**
+         * 显示成功查询的结果
+         * @param {object} resultData - 后端返回的data对象
+         * @param {string} message - 成功消息
+         */
+        function displaySuccessResult(resultData, message) {
+            let html = `<p class="success">${message}</p>`;
+            html += `<table class="result-table">`;
+            html += `<thead><tr><th>字段</th><th>值</th></tr></thead><tbody>`;
+
+            // 扁平化处理嵌套对象，以表格形式展示
+            function appendTableRow(key, value) {
+                html += `<tr><td>${key}</td><td>${formatValue(value)}</td></tr>`;
+            }
+
+            for (const key in resultData) {
+                if (Object.hasOwnProperty.call(resultData, key)) {
+                    const value = resultData[key];
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        // 如果是嵌套对象，创建一个子表格
+                        html += `<tr><td>${key}</td><td>`;
+                        html += `<table class="result-table nested-table" style="margin-top: 0; border: none;">`;
+                        for (const subKey in value) {
+                            if (Object.hasOwnProperty.call(value, subKey)) {
+                                html += `<tr><td style="border: none; padding-left: 15px;">${subKey}</td><td style="border: none;">${formatValue(value[subKey])}</td></tr>`;
+                            }
+                        }
+                        html += `</table>`;
+                        html += `</td></tr>`;
+                    } else {
+                        // 其他类型直接显示
+                        appendTableRow(key, value);
+                    }
+                }
+            }
+            html += `</tbody></table>`;
+            resultOutput.innerHTML = html;
+        }
+
+        /**
+        * 格式化值以在表格中显示
+        * @param {*} value
+        * @returns {string} 格式化后的字符串
+        */
+        function formatValue(value) {
+            if (value === null || value === undefined) {
+                return '<span style="color: grey;">N/A</span>';
+            }
+            if (Array.isArray(value)) {
+                return value.length > 0 ? value.join(', ') : '<span style="color: grey;">无</span>';
+            }
+            if (typeof value === 'boolean') {
+                return value ? '是' : '否';
+            }
+            return String(value);
+        }
+
+        /**
+         * 显示错误结果
+         * @param {string} message - 错误消息
+         * @param {any} data - 后端返回的data字段，可能包含更多错误信息
+         */
+        function displayErrorResult(message, data) {
+            let html = `<p class="error">${message}</p>`;
+            if (data) {
+                if (typeof data === 'object') {
+                    html += `<p class="error">详细信息:</p>`;
+                    html += `<table class="result-table">`;
+                    html += `<thead><tr><th>字段</th><th>值</th></tr></thead><tbody>`;
+                    for (const key in data) {
+                        if (Object.hasOwnProperty.call(data, key)) {
+                            html += `<tr><td>${key}</td><td>${formatValue(data[key])}</td></tr>`;
+                        }
+                    }
+                    html += `</tbody></table>`;
+                } else {
+                    html += `<p class="error">详细信息: ${data}</p>`;
+                }
+            }
+            resultOutput.innerHTML = html;
+        }
+
+    </script>
+</body>
+</html>

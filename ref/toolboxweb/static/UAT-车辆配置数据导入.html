@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UAT 车辆配置数据导入</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .converter-box {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .converter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        h2 {
+            margin: 0;
+            color: #3498db;
+        }
+        textarea { /* 这个现在只用作展示，用户不可编辑 */
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: vertical;
+            font-family: monospace;
+            box-sizing: border-box;
+            background-color: #f9f9f9; /* 保持与 output-area 一致 */
+        }
+        /* 统一输入框和下拉选择框样式，并调整margin-bottom为5px，给错误和提示信息留出空间 */
+        input[type="text"], input[type="number"], select {
+            width: calc(100% - 22px); /* 100% 减去 padding */
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 5px; /* 调整为5px */
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        .input-group {
+            margin-bottom: 15px; /* 保持input-group之间有较大间距 */
+        }
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap; /* 按钮多时换行 */
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .action-btn {
+            background-color: #2ecc71; /* 提交按钮绿色 */
+        }
+        .action-btn:hover {
+            background-color: #27ae60;
+        }
+        .clear-btn {
+            background-color: #e74c3c;
+        }
+        .clear-btn:hover {
+            background-color: #c0392b;
+        }
+        .info {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #7f8c8d;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            text-align: center;
+        }
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .result-table th, .result-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .result-table th {
+            background-color: #f2f2f2;
+            color: #555;
+        }
+        .output-area {
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: #f9f9f9;
+            font-family: monospace;
+            white-space: pre-wrap; /* 保留空白符和换行 */
+            word-wrap: break-word; /* 长单词也换行 */
+            color: #444;
+            max-height: 300px; /* 限制高度，超出滚动 */
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        .error {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .success {
+            color: #2ecc71;
+            font-weight: bold;
+        }
+        .field-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        @media (max-width: 600px) {
+            .field-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>UAT 车辆配置数据导入</h1>
+
+    <div class="container">
+        <!-- 输入框和操作区域 -->
+        <div class="converter-box">
+            <div class="converter-header">
+                <h2>车辆数据输入</h2>
+            </div>
+            <div class="field-grid">
+                <!-- 用户需要输入的字段 -->
+                <div class="input-group">
+                    <label for="project">所属项目 (项目版本号)</label>
+                    <select id="project" onchange="applyRules()" required>
+                        <option value="">请选择项目</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="carSoftwareVersion">车机软件版本号</label>
+                    <input type="text" id="carSoftwareVersion" placeholder="请输入车机软件版本号" oninput="applyRules()" required>
+                    <div id="carSoftwareVersionHint" class="info" style="font-size: 0.9em; margin-top: 5px; color: #6c757d; border-top: none; padding-top: 0;">请先选择所属项目。</div>
+                    <div id="carSoftwareVersionError" class="error" style="font-size: 0.9em;"></div>
+                </div>
+                <div class="input-group">
+                    <label for="huFazitId">HU Fazit ID（SN号）</label>
+                    <input type="text" id="huFazitId" placeholder="请输入HU Fazit ID（SN号）" required>
+                </div>
+                <div class="input-group">
+                    <label for="ocuIccid">OCU ICCID</label>
+                    <input type="text" id="ocuIccid" placeholder="请输入OCU ICCID（19或20位数字）" required>
+                    <div id="ocuIccidError" class="error" style="font-size: 0.9em;"></div>
+                </div>
+                <div class="input-group">
+                    <label for="msisdn">MSISDN</label>
+                    <input type="text" id="msisdn" placeholder="请输入MSISDN（11位手机号码，无需+86）" required>
+                    <div id="msisdnError" class="error" style="font-size: 0.9em;"></div>
+                </div>
+                <div class="input-group">
+                    <label for="ocuFazitId">OCU Fazit ID（SN号）</label>
+                    <input type="text" id="ocuFazitId" placeholder="请输入OCU Fazit ID（SN号）" required>
+                </div>
+                <div class="input-group">
+                    <label for="vehicleVin">车辆VIN码</label>
+                    <input type="text" id="vehicleVin" placeholder="请输入车辆VIN码（17位）" required>
+                    <div id="vehicleVinError" class="error" style="font-size: 0.9em;"></div>
+                </div>
+                <div class="input-group">
+                    <label for="applicationDepartment">申请部门</label>
+                    <input type="text" id="applicationDepartment" placeholder="请输入申请部门" required>
+                </div>
+
+                <!-- 规则计算字段 (只读显示) -->
+                <div class="input-group">
+                    <label for="ocuType">OCU类型</label>
+                    <input type="text" id="ocuType" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="brand">品牌</label>
+                    <input type="text" id="brand" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="vehicleType">车机类型</label>
+                    <input type="text" id="vehicleType" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="fuelType">燃油类型</label>
+                    <input type="text" id="fuelType" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="prnr">PRNR</label>
+                    <input type="text" id="prnr" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="generatorId">发电机号</label>
+                    <input type="text" id="generatorId" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="operator">运营商</label>
+                    <input type="text" id="operator" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="productionLinePlatform">产线平台</label>
+                    <input type="text" id="productionLinePlatform" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="huPartNumber">HU零件号</label>
+                    <input type="text" id="huPartNumber" readonly style="background-color: #e9ecef;">
+                </div>
+                <div class="input-group">
+                    <label for="ocuPartNumber">OCU零件号</label>
+                    <input type="text" id="ocuPartNumber" readonly style="background-color: #e9ecef;">
+                </div>
+                
+                <!-- 预设值或自动生成字段 (隐藏不展示给用户) -->
+                <div class="input-group" style="display: none;">
+                    <label for="environment">添加环境</label>
+                    <input type="hidden" id="environment" value="UAT">
+                </div>
+                <div class="input-group" style="display: none;">
+                    <label for="engineNumber">发动机号</label>
+                    <input type="hidden" id="engineNumber" value="CUGP00037">
+                </div>
+                <div class="input-group" style="display: none;">
+                    <label for="vehicleNum">VehicleNum</label>
+                    <input type="hidden" id="vehicleNum" value="1">
+                </div>
+                <div class="input-group" style="display: none;">
+                    <label for="productionTime">生产时间</label>
+                    <input type="hidden" id="productionTime">
+                </div>
+                <div class="input-group" style="display: none;">
+                    <label for="colorCode">颜色代码</label>
+                    <input type="hidden" id="colorCode" value="P1P1">
+                </div>
+                <div class="input-group" style="display: none;">
+                    <label for="color">颜色</label>
+                    <input type="hidden" id="color" value="雅致白">
+                </div>
+            </div>
+
+            <div class="buttons">
+                <!-- 导入按钮，分别传入不同的 endpointKey -->
+                <button class="action-btn" onclick="submitData('sp')">UAT SP数据导入</button>
+                <button class="action-btn" onclick="submitData('odp')">UAT ODP数据导入</button>
+                <button class="action-btn" onclick="submitData('afdp')">UAT AF车DP数据导入</button>
+                <button class="clear-btn" onclick="clearForm()">清空表单</button>
+            </div>
+            
+            <div class="info output-area" id="statusMessage">
+                提示：请选择所属项目，并输入车机软件版本号以自动填充字段。
+            </div>
+        </div>
+
+        <!-- API响应显示区域 -->
+        <div class="converter-box" id="responseDisplay" style="display: none;">
+            <div class="converter-header">
+                <!-- 导入结果的标题，通过JS动态更新ID -->
+                <h2 id="importResultTitle">导入结果</h2> 
+            </div>
+            <div class="output-area" id="apiResponse">
+                <!-- API响应内容将显示在这里 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Flask后端API的URL映射
+        // 注意：如果你不是在Flask环境中使用（例如直接打开HTML文件），
+        // 请将 {{ url_for(...) }} 替换为实际的API路径，例如：
+        // 'sp': '/api/submit_vehicle_config_sp',
+        // 'odp': '/api/submit_vehicle_config_odp',
+        // 'afdp': '/api/submit_vehicle_config_afdp'
+        const backendApiEndpoints = {
+            'sp': '{{ url_for('submit_vehicle_config_sp') }}', 
+            'odp': '{{ url_for('submit_vehicle_config_odp') }}',
+            'afdp': '{{ url_for('submit_vehicle_config_afdp') }}'
+        };
+
+        // 对应导入目标的显示名称
+        const importTitles = {
+            'sp': 'UAT SP导入结果',
+            'odp': 'UAT ODP导入结果',
+            'afdp': 'UAT AF车DP导入结果'
+        };
+
+        // 规则数据，将您的表格数据转换为JS数组
+        const rules = [
+            // 项目版本号	OCU类型	品牌	车机类型	燃油类型	车机软件版本号	PRNR	发电机号	运营商	产线平台	HU零件号	OCU零件号
+            { "项目版本号": "MOS3_1", "OCU类型": "LOW", "品牌": "VW", "车机类型": "CNS2.0", "燃油类型": "FV", "车机软件版本号": ["A123"], "PRNR": "~28UN~27T0\n~28UW~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_1", "OCU类型": "LOW", "品牌": "VW", "车机类型": "CRS3.0", "燃油类型": "FV", "车机软件版本号": ["A123"], "PRNR": "~28AT", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_1", "OCU类型": "HIGH", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["00XX", "01XX"], "PRNR": "~28AR~27T3\n~28AR~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_1", "OCU类型": "HIGH", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["04XX"], "PRNR": "~28AR~27T3\n~28AR~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_2", "OCU类型": "HIGH", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["02XX", "03XX"], "PRNR": "~28AR~27T3\n~28AR~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB_37W", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_2_PLUS", "OCU类型": "HIGH", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["07XX", "C7XX"], "PRNR": "~28AR~27T3\n~28AR~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB_37W", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3.X_BM", "OCU类型": "HIGH", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["06XX", "08XX", "C8XX", "09XX", "C9XX"], "PRNR": "~28AR~27T3\n~28AR~27T0", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB_37W", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS_CEI", "OCU类型": "OCB", "品牌": "VW", "车机类型": "SOC", "燃油类型": "FV", "车机软件版本号": ["00XX", "X0XX", "01XX", "X1XX"], "PRNR": "~28DJ", "发电机号": "空", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS3_GP", "OCU类型": "Conmod5G", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["01XX", "C1XX", "02XX", "C2XX"], "PRNR": "~28DK~27UY~2EL8\n~28DL~27UY~2EL8", "发电机号": "空", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "3JD035866", "OCU零件号": "3JD035741" },
+            { "项目版本号": "MOS3_GP_2", "OCU类型": "Conmod5G", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["C3XX", "03XX", "C4XX", "04XX"], "PRNR": "~28DL~27UY~2EL8\n~28DK~27UY~2EL8", "发电机号": "空", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "3JD035866A", "OCU零件号": "3JD035741B" },
+            { "项目版本号": "MOS3_GP_3", "OCU类型": "Conmod5G", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "FV", "车机软件版本号": ["C5XX", "05XX", "C6XX", "06XX"], "PRNR": "~28DL~27UY~2EL8\n~28DK~27UY~2EL8", "发电机号": "空", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "3JD035866B", "OCU零件号": "3JD035741E" },
+            { "项目版本号": "MOS3_GP_4", "OCU类型": "Conmod5G", "品牌": "VW", "车机类型": "CNS3.0", "燃油类型": "PHEV", "车机软件版本号": ["C5XX", "05XX", "C6XX", "06XX", "C7XX", "07XX"], "PRNR": "~28DL~27UY~2EL8\n~28DK~27UY~2EL8", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "3JD035866C", "OCU零件号": "3JD035741C" },
+            { "项目版本号": "MOS3_PNS", "OCU类型": "PNS", "品牌": "VW", "车机类型": "PNS", "燃油类型": "FV", "车机软件版本号": ["A123"], "PRNR": "~28YZ~27Q4~2EL7", "发电机号": "空", "运营商": "CMCC", "产线平台": "MQB_37W", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["0XXX", "1XXX"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0_ME3", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["2XXX"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0_ME3_1", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["291XX", "2949"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0_ME3_2", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["292XX", "293XX", "2959"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0_ME3_7", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["296XX", "297XX", "E96XX", "E97XX"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS4_0_ME3_8_2", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["298XX", "E98XX"], "PRNR": "~28AS~2KS3\n~28AS~2KS0\n~28AV~2KS0\n~28AV~2KS3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "IDS5", "OCU类型": "OCU4", "品牌": "VW", "车机类型": "ICAS3", "燃油类型": "BEV", "车机软件版本号": ["K3XX", "K4XX", "63XX", "64XX", "M6XX", "76XX"], "PRNR": "~28DC~24N3\n~28DB~24N0\n~28DB~24N3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "10C035878B", "OCU零件号": "14G035284C" },
+            { "项目版本号": "Audi_A7L", "OCU类型": "Conbox", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "FV", "车机软件版本号": ["35XX", "36XX"], "PRNR": "~2I8Z~2IV3", "发电机号": "空", "运营商": "CMCC", "产线平台": "MLB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_A7L_CL37", "OCU类型": "Conbox", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "FV", "车机软件版本号": ["37XX", "38XX"], "PRNR": "~2I8Z~2IV3", "发电机号": "空", "运营商": "CMCC", "产线平台": "MLB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_A7L_CL39", "OCU类型": "Conbox", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "FV", "车机软件版本号": ["39XX", "40XX", "42XX"], "PRNR": "~2I8Z~2IV3", "发电机号": "空", "运营商": "CMCC", "产线平台": "MLB", "HU零件号": "4M2035138", "OCU零件号": "80D035285B" },
+            { "项目版本号": "Audi_CSUV", "OCU类型": "HIGH", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "FV", "车机软件版本号": ["37XX", "38XX"], "PRNR": "~2I8Z~2EL5", "发电机号": "空", "运营商": "CMCC", "产线平台": "MLB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_ASUVe", "OCU类型": "OCU4", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "BEV", "车机软件版本号": ["37XX", "38XX"], "PRNR": "~2ER6~2KS3~2IU3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_ASUVe_RD", "OCU类型": "OCU4", "品牌": "AUDI", "车机类型": "MIB3", "燃油类型": "BEV", "车机软件版本号": ["3840", "3873", "42XX"], "PRNR": "~2ER6~2KS3~2IU3", "发电机号": "DKX575213", "运营商": "CUSC", "产线平台": "MEB", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_A5L", "OCU类型": "Conmod", "品牌": "AUDI", "车机类型": "HCP3", "燃油类型": "FV", "车机软件版本号": ["A123"], "PRNR": "~2ER6~2JH1", "发电机号": "空", "运营商": "CUSC", "产线平台": "PPC", "HU零件号": "8B3035040E", "OCU零件号": "85C035283AD" },
+            { "项目版本号": "Audi_BNB", "OCU类型": "IAM", "品牌": "AUDI", "车机类型": "ZXD", "燃油类型": "BEV", "车机软件版本号": ["A123"], "PRNR": "~PB0~KS0~U5N~U8B~U4M\n~PB0~KS1~U5N~U8B~U4M", "发电机号": "DKX575213", "运营商": "CTCC", "产线平台": "ADP", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_C_SUVE", "OCU类型": "IAM", "品牌": "AUDI", "车机类型": "ZXD", "燃油类型": "BEV", "车机软件版本号": ["A123"], "PRNR": "~PB1~KS0~U5N~U8B~U4M\n~PB1~KS1~U5N~U8B~U4M", "发电机号": "DKX575213", "运营商": "CTCC", "产线平台": "ADP", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "Audi_Q4", "OCU类型": "Conmod", "品牌": "AUDI", "车机类型": "ICC", "燃油类型": "FV", "车机软件版本号": ["X177-A200"], "PRNR": "~2ED6~2JH0\n~2ED6~2JH1", "发电机号": "空", "运营商": "CUSC", "产线平台": "MQB_37WBaseline", "HU零件号": "83H035020", "OCU零件号": "82D035741" },
+            { "项目版本号": "MOS_A_NB", "OCU类型": "IAM", "品牌": "VW", "车机类型": "ZXD", "燃油类型": "PHEV", "车机软件版本号": ["A123"], "PRNR": "~200X~28DL~2EL6~2KS0\n~200X~28DL~2EL6~2KS1", "发电机号": "DKX575213", "运营商": "CTCC", "产线平台": "ADP", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS_F_SUV", "OCU类型": "IAM", "品牌": "VW", "车机类型": "ZXD", "燃油类型": "EREV", "车机软件版本号": ["A123"], "PRNR": "~206V~28DL~2EL8~2KS1", "发电机号": "DKX575213", "运营商": "CTCC", "产线平台": "ADP", "HU零件号": "空", "OCU零件号": "空" },
+            { "项目版本号": "MOS_C_SUV", "OCU类型": "CDCU", "品牌": "VW", "车机类型": "CDCU", "燃油类型": "BEV", "车机软件版本号": ["A123"], "PRNR": "~28AY~27UT~2EL8", "发电机号": "DKX575213", "运营商": "CTCC", "产线平台": "ADP", "HU零件号": "空", "OCU零件号": "空" },
+        ];
+
+        // 页面初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            populateProjectDropdown();
+            updateProductionTime();
+            setInterval(updateProductionTime, 1000); // 生产时间字段隐藏，但其值会随时间更新
+            applyRules(); // 页面加载时执行一次，以初始化提示
+        });
+
+        // 填充“所属项目”下拉选择框
+        function populateProjectDropdown() {
+            const projectSelect = document.getElementById('project');
+            // 使用 Set 确保项目名称唯一，然后转换为数组并排序
+            const projectNames = [...new Set(rules.map(rule => rule['项目版本号']))].sort();
+            projectNames.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                projectSelect.appendChild(option);
+            });
+        }
+
+        // 更新生产时间
+        function updateProductionTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const day = now.getDate().toString().padStart(2, '0');
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            document.getElementById('productionTime').value = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        }
+
+        // 根据规则计算并填充字段
+        function applyRules() {
+            const selectedProject = document.getElementById('project').value;
+            const carSoftwareVersionInput = document.getElementById('carSoftwareVersion').value.toUpperCase().trim();
+            const errorElement = document.getElementById('carSoftwareVersionError');
+            const hintElement = document.getElementById('carSoftwareVersionHint');
+
+            // 清空所有规则计算字段及相关错误/提示
+            const fieldsToClear = [
+                'ocuType', 'brand', 'vehicleType', 'fuelType', 'prnr', 'generatorId',
+                'operator', 'productionLinePlatform', 'huPartNumber', 'ocuPartNumber'
+            ];
+            fieldsToClear.forEach(id => document.getElementById(id).value = '');
+            errorElement.textContent = ''; // 清除车机软件版本号错误信息
+            hintElement.textContent = ''; // 清除旧的提示
+            
+            // 清除其他校验的错误信息
+            document.getElementById('vehicleVinError').textContent = '';
+            document.getElementById('ocuIccidError').textContent = '';
+            document.getElementById('msisdnError').textContent = '';
+
+            // --- 更新车机软件版本号提示 ---
+            if (!selectedProject) {
+                hintElement.textContent = '请选择所属项目以获取推荐的车机软件版本号。';
+                document.getElementById('statusMessage').className = 'info output-area';
+                document.getElementById('statusMessage').textContent = '提示：请选择所属项目，并输入车机软件版本号以自动填充字段。';
+                return; // 如果没有选择项目，则不进行后续的规则匹配
+            }
+
+            const projectRulesForHint = rules.filter(rule => rule['项目版本号'] === selectedProject);
+            let possibleVersions = new Set();
+            projectRulesForHint.forEach(rule => {
+                rule['车机软件版本号'].forEach(versionPattern => {
+                    possibleVersions.add(versionPattern);
+                });
+            });
+
+            const sortedVersions = Array.from(possibleVersions).sort();
+            if (sortedVersions.length > 0) {
+                hintElement.textContent = `推荐格式: ${sortedVersions.join(', ')}。 (XX表示0-9或A-Z的任意字符)`;
+                hintElement.style.color = '#6c757d'; // 正常提示颜色
+            } else {
+                hintElement.textContent = '当前项目版本号没有可用的车机软件版本号规则。';
+                hintElement.style.color = '#e74c3c'; // 警告颜色
+            }
+            // --- 提示更新结束 ---
+
+
+            // 如果没有输入车机软件版本号，则只显示提示，不进行规则匹配和填充
+            if (!carSoftwareVersionInput) {
+                document.getElementById('statusMessage').className = 'info output-area';
+                document.getElementById('statusMessage').textContent = '提示：已更新推荐版本号。请继续输入车机软件版本号以自动填充其他字段。';
+                return;
+            }
+
+            const matchingRules = rules.filter(rule => {
+                const projectMatches = rule['项目版本号'] === selectedProject;
+                const swVersionMatches = rule['车机软件版本号'].some(pattern => {
+                    // 处理通配符 XX (匹配0-9, A-Z)
+                    // 确保完整匹配，例如 "00XX" 匹配 "00A1" 但不匹配 "00A1B"
+                    const regexPattern = new RegExp('^' + pattern.replace(/X/g, '[0-9A-Z]') + '$', 'i'); 
+                    return regexPattern.test(carSoftwareVersionInput);
+                });
+                return projectMatches && swVersionMatches;
+            });
+
+            if (matchingRules.length === 1) {
+                const rule = matchingRules[0];
+                document.getElementById('ocuType').value = rule['OCU类型'] === '空' ? '' : rule['OCU类型'];
+                document.getElementById('brand').value = rule['品牌'] === '空' ? '' : rule['品牌'];
+                document.getElementById('vehicleType').value = rule['车机类型'] === '空' ? '' : rule['车机类型'];
+                document.getElementById('fuelType').value = rule['燃油类型'] === '空' ? '' : rule['燃油类型'];
+                // 替换PRNR中的换行符
+                document.getElementById('prnr').value = rule['PRNR'] === '空' ? '' : rule['PRNR'].replace(/\\n/g, '\n'); 
+                document.getElementById('generatorId').value = rule['发电机号'] === '空' ? '' : rule['发电机号'];
+                document.getElementById('operator').value = rule['运营商'] === '空' ? '' : rule['运营商'];
+                document.getElementById('productionLinePlatform').value = rule['产线平台'] === '空' ? '' : rule['产线平台'];
+                document.getElementById('huPartNumber').value = rule['HU零件号'] === '空' ? '' : rule['HU零件号'];
+                document.getElementById('ocuPartNumber').value = rule['OCU零件号'] === '空' ? '' : rule['OCU零件号'];
+                
+                document.getElementById('statusMessage').className = 'success output-area';
+                document.getElementById('statusMessage').textContent = '字段已根据规则自动填充。';
+            } else if (matchingRules.length > 1) {
+                errorElement.textContent = `警告：找到 ${matchingRules.length} 条匹配规则，请检查车机软件版本号是否过于宽泛，已填充第一条匹配规则。`;
+                errorElement.className = 'error';
+                const rule = matchingRules[0]; // 默认取第一条
+                document.getElementById('ocuType').value = rule['OCU类型'] === '空' ? '' : rule['OCU类型'];
+                document.getElementById('brand').value = rule['品牌'] === '空' ? '' : rule[' برند'];
+                document.getElementById('vehicleType').value = rule['车机类型'] === '空' ? '' : rule['车机类型'];
+                document.getElementById('fuelType').value = rule['燃油类型'] === '空' ? '' : rule['燃油类型'];
+                document.getElementById('prnr').value = rule['PRNR'] === '空' ? '' : rule['PRNR'].replace(/\\n/g, '\n');
+                document.getElementById('generatorId').value = rule['发电机号'] === '空' ? '' : rule['发电机号'];
+                document.getElementById('operator').value = rule['运营商'] === '空' ? '' : rule['运营商'];
+                document.getElementById('productionLinePlatform').value = rule['产线平台'] === '空' ? '' : rule['产线平台'];
+                document.getElementById('huPartNumber').value = rule['HU零件号'] === '空' ? '' : rule['HU零件号'];
+                document.getElementById('ocuPartNumber').value = rule['OCU零件号'] === '空' ? '' : rule['OCU零件号'];
+                document.getElementById('statusMessage').className = 'error output-area';
+                document.getElementById('statusMessage').textContent = '错误：找到多条匹配规则。请尝试更精确地输入版本号。';
+
+            } else {
+                errorElement.textContent = '当前输入没有找到匹配的规则，请检查所属项目和车机软件版本号。';
+                errorElement.className = 'error';
+                document.getElementById('statusMessage').className = 'error output-area';
+                document.getElementById('statusMessage').textContent = '错误：没有找到匹配的规则，请检查所属项目和车机软件版本号。';
+            }
+        }
+
+        // 清空表单
+        function clearForm() {
+            document.getElementById('project').value = '';
+            document.getElementById('carSoftwareVersion').value = '';
+            document.getElementById('huFazitId').value = '';
+            document.getElementById('ocuIccid').value = '';
+            document.getElementById('msisdn').value = '';
+            document.getElementById('ocuFazitId').value = '';
+            document.getElementById('vehicleVin').value = '';
+            document.getElementById('applicationDepartment').value = '';
+
+            // 清空所有规则计算字段
+            const fieldsToClear = [
+                'ocuType', 'brand', 'vehicleType', 'fuelType', 'prnr', 'generatorId',
+                'operator', 'productionLinePlatform', 'huPartNumber', 'ocuPartNumber'
+            ];
+            fieldsToClear.forEach(id => document.getElementById(id).value = '');
+
+            // 清空所有错误和提示信息
+            document.getElementById('carSoftwareVersionError').textContent = '';
+            document.getElementById('carSoftwareVersionHint').textContent = '请先选择所属项目。';
+            document.getElementById('carSoftwareVersionHint').style.color = '#6c757d';
+            document.getElementById('vehicleVinError').textContent = '';
+            document.getElementById('ocuIccidError').textContent = '';
+            document.getElementById('msisdnError').textContent = '';
+            
+            document.getElementById('statusMessage').className = 'info output-area';
+            document.getElementById('statusMessage').textContent = '提示：请选择所属项目，并输入车机软件版本号以自动填充字段。';
+
+            document.getElementById('apiResponse').innerHTML = '';
+            document.getElementById('responseDisplay').style.display = 'none';
+            document.getElementById('importResultTitle').textContent = '导入结果'; // 重置标题
+        }
+
+        /**
+         * 提交数据到指定的后端接口
+         * @param {string} endpointKey - 标识要调用的后端接口 ('sp', 'odp', 'afdp')
+         */
+        async function submitData(endpointKey) {
+            // 清除之前的错误信息
+            document.getElementById('vehicleVinError').textContent = '';
+            document.getElementById('ocuIccidError').textContent = '';
+            document.getElementById('msisdnError').textContent = '';
+            document.getElementById('statusMessage').className = 'info output-area';
+            document.getElementById('statusMessage').textContent = '';
+
+            // 根据 endpointKey 获取对应的 API URL 和导入标题
+            const targetApiUrl = backendApiEndpoints[endpointKey];
+            const currentImportTitle = importTitles[endpointKey];
+
+            if (!targetApiUrl) {
+                document.getElementById('statusMessage').className = 'error output-area';
+                document.getElementById('statusMessage').textContent = '错误：无效的导入目标！';
+                return;
+            }
+
+            // 更新导入结果标题
+            document.getElementById('importResultTitle').textContent = currentImportTitle;
+
+            const project = document.getElementById('project').value;
+            const carSoftwareVersionInput = document.getElementById('carSoftwareVersion').value;
+            const huFazitId = document.getElementById('huFazitId').value;
+            let ocuIccid = document.getElementById('ocuIccid').value.trim();
+            let msisdn = document.getElementById('msisdn').value.trim();
+            const ocuFazitId = document.getElementById('ocuFazitId').value;
+            const vehicleVin = document.getElementById('vehicleVin').value.trim();
+            const applicationDepartment = document.getElementById('applicationDepartment').value;
+            
+            // 客户端验证
+            let hasError = false;
+            let errorMessages = [];
+
+            if (!project) {
+                errorMessages.push('所属项目未选择！');
+                hasError = true;
+            }
+            if (!carSoftwareVersionInput || document.getElementById('carSoftwareVersionError').textContent) {
+                errorMessages.push('车机软件版本号未填写或不匹配规则！');
+                hasError = true;
+            }
+            if (!huFazitId) {
+                errorMessages.push('HU Fazit ID（SN号）为必填项！');
+                hasError = true;
+            }
+            if (!ocuIccid) {
+                document.getElementById('ocuIccidError').textContent = 'OCU ICCID为必填项！';
+                errorMessages.push('OCU ICCID为必填项！');
+                hasError = true;
+            } else if (!/^\d{19,20}$/.test(ocuIccid)) { // ICCID通常19或20位数字
+                document.getElementById('ocuIccidError').textContent = 'OCU ICCID必须是19或20位数字！';
+                errorMessages.push('OCU ICCID必须是19或20位数字！');
+                hasError = true;
+            }
+            // MSISDN处理：去除+86
+            msisdn = msisdn.replace(/^\+86/, '');
+            document.getElementById('msisdn').value = msisdn; // 更新显示值
+            if (!msisdn) {
+                document.getElementById('msisdnError').textContent = 'MSISDN为必填项！';
+                errorMessages.push('MSISDN为必填项！');
+                hasError = true;
+            } else if (!/^\d{11}$/.test(msisdn)) { // 中国大陆手机号11位数字
+                document.getElementById('msisdnError').textContent = 'MSISDN必须是11位数字！';
+                errorMessages.push('MSISDN必须是11位数字！');
+                hasError = true;
+            }
+            if (!ocuFazitId) {
+                errorMessages.push('OCU Fazit ID（SN号）为必填项！');
+                hasError = true;
+            }
+            if (!vehicleVin) {
+                document.getElementById('vehicleVinError').textContent = '车辆VIN码为必填项！';
+                errorMessages.push('车辆VIN码为必填项！');
+                hasError = true;
+            } else if (vehicleVin.length !== 17) {
+                document.getElementById('vehicleVinError').textContent = '车辆VIN码必须为17位！';
+                errorMessages.push('车辆VIN码必须为17位！');
+                hasError = true;
+            }
+            if (!applicationDepartment) {
+                errorMessages.push('申请部门为必填项！');
+                hasError = true;
+            }
+
+
+            if (hasError) {
+                document.getElementById('statusMessage').style.display = 'block'; 
+                document.getElementById('statusMessage').className = 'error output-area';
+                document.getElementById('statusMessage').textContent = '错误：' + errorMessages.join(' ');
+                return;
+            }
+
+            // 获取所有字段，包括隐藏的默认值和自动填充值
+            const data = {
+                "所属项目": project,
+                "添加环境": document.getElementById('environment').value,
+                "OCU类型": document.getElementById('ocuType').value,
+                "品牌": document.getElementById('brand').value,
+                "HU Fazit ID": huFazitId,
+                "车机类型": document.getElementById('vehicleType').value,
+                "OCU ICCID": ocuIccid,
+                "MSISDN": msisdn,
+                "OCU Fazit ID": ocuFazitId,
+                "燃油类型": document.getElementById('fuelType').value,
+                "车辆VIN码": vehicleVin,
+                "发动机号": document.getElementById('engineNumber').value,
+                "车机软件版本号": carSoftwareVersionInput,
+                "项目版本号": project, // 项目版本号取自所属项目
+                "PRNR": document.getElementById('prnr').value,
+                "发电机号": document.getElementById('generatorId').value,
+                "VehicleNum": parseInt(document.getElementById('vehicleNum').value, 10),
+                "生产时间": document.getElementById('productionTime').value,
+                "颜色代码": document.getElementById('colorCode').value,
+                "颜色": document.getElementById('color').value,
+                "运营商": document.getElementById('operator').value,
+                "产线平台": document.getElementById('productionLinePlatform').value,
+                "HU零件号": document.getElementById('huPartNumber').value,
+                "OCU零件号": document.getElementById('ocuPartNumber').value,
+                "申请部门": applicationDepartment
+            };
+
+
+            const jsonString = JSON.stringify(data, null, 2);
+            const apiResponseDiv = document.getElementById('apiResponse');
+            
+            apiResponseDiv.innerHTML = `<pre>${jsonString}</pre>`; // 先显示即将发送的数据
+            document.getElementById('responseDisplay').style.display = 'block';
+
+            // const blob = new Blob([jsonString], { type: 'application/json' }); // 如果需要下载数据，保留
+            // const url = URL.createObjectURL(blob);
+
+            document.getElementById('statusMessage').className = 'info output-area';
+            document.getElementById('statusMessage').textContent = `数据已准备好，正在尝试导入到 ${currentImportTitle} ...`;
+            
+            try {
+                const response = await fetch(targetApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: jsonString,
+                });
+
+                const result = await response.json();
+                
+                apiResponseDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`; // 显示后端返回的原始JSON
+
+                if (response.ok) {
+                    document.getElementById('statusMessage').className = 'success output-area';
+                    document.getElementById('statusMessage').textContent = `数据成功导入到 ${currentImportTitle}！请查看下方结果。`;
+                    // 如果后端返回的是表格数据，则需要调用渲染表格的函数
+                    if (result.type === 'table' && Array.isArray(result.data)) {
+                        renderTable(result.data, result.headers || Object.keys(result.data[0] || {}));
+                    }
+                } else {
+                    document.getElementById('statusMessage').className = 'error output-area';
+                    document.getElementById('statusMessage').textContent = `数据导入到 ${currentImportTitle} 失败：${result.message || response.statusText}`;
+                }
+            } catch (error) {
+                console.error('请求出错:', error);
+                document.getElementById('statusMessage').className = 'error output-area';
+                document.getElementById('statusMessage').textContent = `请求发生错误: ${error.message}`;
+                apiResponseDiv.innerHTML = `<span class="error">请求错误: ${error.message}</span>`;
+            }
+        }
+
+        // 渲染表格函数（如果后端返回查询结果需要以表格形式显示）
+        function renderTable(data, headers) {
+            const apiResponseDiv = document.getElementById('apiResponse');
+            if (!data || data.length === 0) {
+                apiResponseDiv.innerHTML += '<p>没有查询到数据。</p>'; // 追加而非覆盖
+                return;
+            }
+
+            let tableHTML = '<table class="result-table"><thead><tr>';
+            if (headers && headers.length > 0) {
+                headers.forEach(header => {
+                    tableHTML += `<th>${header}</th>`;
+                });
+            } else { // 自动提取所有key作为header
+                headers = Object.keys(data[0]);
+                headers.forEach(header => {
+                    tableHTML += `<th>${header}</th>`;
+                });
+            }
+            tableHTML += '</tr></thead><tbody>';
+
+            data.forEach(row => {
+                tableHTML += '<tr>';
+                headers.forEach(header => {
+                    tableHTML += `<td>${row[header] !== undefined ? row[header] : ''}</td>`;
+                });
+                tableHTML += '</tr>';
+            });
+            tableHTML += '</tbody></table>';
+            // 每次渲染表时，我们可能希望清除之前的响应，或者选择追加
+            // 这里选择追加在现有响应下方，方便查看原始JSON和表格
+            apiResponseDiv.innerHTML = apiResponseDiv.innerHTML + tableHTML; 
+        }
+    </script>
+</body>
+</html>
