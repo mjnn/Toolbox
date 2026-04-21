@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    # When set, run the original fully sequential pipeline (easier to debug log ordering).
-    [switch] $Sequential
+    # 可选：并行执行「前端 npm run build」与「pip install + pyinstaller 安装」（仅缩短打包机耗时，与运行时 Uvicorn worker 无关）
+    [switch] $ParallelPrereqs
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,7 +26,7 @@ function Invoke-ParallelPackagingPrereqs {
     $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
     $mergedPath = @($machinePath, $userPath) -join ";"
 
-    Write-Host "[1/5] Parallel phase: frontend 'npm run build' + backend 'pip install' (two worker processes)..."
+    Write-Host "[1/5] ParallelPrereqs: frontend 'npm run build' + backend 'pip install' (two jobs)..."
 
     $sbFrontend = {
         param($Dir, $MergedPath)
@@ -49,7 +49,6 @@ function Invoke-ParallelPackagingPrereqs {
     $jobs = @($jobFrontend, $jobPip)
     Wait-Job -Job $jobs | Out-Null
 
-    # npm/vite 等会向 stderr 打警告；Receive-Job 在 ErrorAction Stop 下会把 ErrorRecord 当终止错误
     $prevEa = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     foreach ($j in $jobs) {
@@ -64,8 +63,11 @@ function Invoke-ParallelPackagingPrereqs {
     $ErrorActionPreference = $prevEa
 }
 
-if ($Sequential) {
-    Write-Host "[1/5] Build frontend dist (sequential mode)..."
+if ($ParallelPrereqs) {
+    Invoke-ParallelPackagingPrereqs -FrontendDir $FrontendDir -VenvPython $VenvPython -BackendDir $BackendDir
+    Write-Host "[2/5] Backend venv ready; frontend dist should exist for PyInstaller."
+} else {
+    Write-Host "[1/5] Build frontend dist (default sequential pipeline)..."
     Push-Location $FrontendDir
     npm run build
     Pop-Location
@@ -73,9 +75,6 @@ if ($Sequential) {
     Write-Host "[2/5] Install backend requirements and PyInstaller..."
     & $VenvPython -m pip install -r (Join-Path $BackendDir "requirements.txt")
     & $VenvPython -m pip install pyinstaller
-} else {
-    Invoke-ParallelPackagingPrereqs -FrontendDir $FrontendDir -VenvPython $VenvPython -BackendDir $BackendDir
-    Write-Host "[2/5] Backend venv ready; frontend dist should exist for PyInstaller."
 }
 
 Write-Host "[3/5] Build backend executable..."

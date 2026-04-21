@@ -57,24 +57,12 @@ target: Windows x64
 
 > 建议 Agent 严格按顺序执行，不要跳步。
 
-### 并发打包（`build-release.ps1` 默认）
+### 3.0 术语：两种「并发」不要混淆
 
-为缩短总耗时，脚本在第一阶段用 **两个 PowerShell 后台作业**（`Start-Job`，独立进程）并行执行互不阻塞的工作：
-
-| 作业 | 内容 |
-| --- | --- |
-| `toolbox_pack_frontend` | 在 `frontend` 执行 `npm run build`，产出 `frontend/dist` |
-| `toolbox_pack_pip` | 在 `backend\.venv` 中执行 `pip install -r requirements.txt` 与 `pip install pyinstaller` |
-
-子作业会合并 **Machine** 与 **User** 的 `Path`，避免后台作业找不到 `npm` 或未安装的用户级 Node。
-
-随后仍 **顺序** 执行：`PyInstaller` 打包 `backend/run_server.py`（依赖上一步的 `frontend/dist`），再拷贝脚本与资源到 `release/toolbox-portable`。并行只覆盖「前端构建 + 依赖安装」，不改变产物布局与运行手册中的验收项。
-
-需要严格顺序、方便对齐日志时，关掉并行：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1" -Sequential
-```
+| 含义 | 说明 |
+|------|------|
+| **打包脚本是否并行** | 仅影响**打包机**上是否同时跑 `npm run build` 与 `pip install`。**默认顺序执行**（先前端 build，再 pip），与运行时性能无关。若需缩短打包机耗时，可加 `-ParallelPrereqs`。 |
+| **运行时 Uvicorn worker** | 指**后端进程数**（`backend/run_server.py` → `uvicorn.run(..., workers=N)`），用于支撑多用户并发访问；规划见下文 **§3.1**。 |
 
 ### Step 1：构建前端静态资源
 
@@ -96,9 +84,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 
 该脚本会：
 
-1. **（默认）并行**：前端 `npm run build` + 后端 venv 依赖与 PyInstaller 安装；**或** `-Sequential` 时按旧版顺序执行这两步
-2. 用 `PyInstaller` 打包后端（`backend/run_server.py`）
-3. 组装发布目录 `release/toolbox-portable`
+1. **（默认）顺序**：`npm run build` → `pip install` / `pyinstaller` → `PyInstaller` 打包 → 组装 `release/toolbox-portable`
+2. 可选 **仅缩短打包机耗时**：`scripts/build-release.ps1 -ParallelPrereqs`（并行执行前端 build 与 pip 两作业，与运行时 worker **无关**）
+3. 用 `PyInstaller` 打包后端（`backend/run_server.py`）
+4. 组装发布目录 `release/toolbox-portable`
+
+### 3.1 运行时 Uvicorn worker 与 PostgreSQL 连接池
+
+本节回答：**在约 20～50 名用户、峰值约 10 人同时访问、PostgreSQL 为 1 vCPU / 2GB 时，应设几个 worker、连接池如何取**。
+
+**规划结论（默认值与代码一致）**：
+
+| 项 | 建议 |
+|----|------|
+| **Uvicorn workers** | **2**。未设置 `TOOLBOX_WORKERS` 且 `DATABASE_URL` 为 PostgreSQL 时，`run_server.py` 默认 **2**；SQLite 文件库强制 **1**（多进程共写同一文件不可靠）。 |
+| **理由** | FastAPI/Starlette 单进程内异步可处理大量并发 I/O；**2 进程**可缓解少量**同步/阻塞**路径卡住事件循环；在 **1 核 RDS** 上继续加 worker 对吞吐收益有限，且增加 PG 连接与 CPU 争抢。 |
+| **不建议** | 在该 PG 规格下将 worker **长期开到 4 以上**（除非同步调高应用机与 RDS 规格并压测）。 |
+
+**连接数粗算**：`app/database.py` 对 PostgreSQL 默认 `SQLALCHEMY_POOL_SIZE=4`、`SQLALCHEMY_MAX_OVERFLOW=2`（每进程最多约 6 条连接）。**2 workers × 6 ≈ 12** 条应用连接，对 2GB 实例通常可接受；若 RDS `max_connections` 或内存紧张，可略降 `SQLALCHEMY_POOL_SIZE` / `max_overflow`。
+
+**环境变量**（`backend/.env` 或便携包工作目录下的 `.env`）：
+
+- `TOOLBOX_WORKERS`：显式覆盖 worker 数；与 SQLite 冲突时进程内会限制为 1。
+- `SQLALCHEMY_POOL_SIZE`、`SQLALCHEMY_MAX_OVERFLOW`：每 worker 连接池（仅 PostgreSQL）。
 
 ### Step 3：启动冒烟验证
 
@@ -250,7 +258,7 @@ Goals:
 7) Both localhost and LAN IP URL should be reachable.
 
 Process requirements:
-- Use scripts/build-release.ps1 for packaging (default parallel frontend build + pip install; use -Sequential only when debugging logging order).
+- Use scripts/build-release.ps1 for packaging (default sequential npm build then pip; optional -ParallelPrereqs only to speed up the build machine).
 - Verify with release/toolbox-portable/start.ps1 then stop.ps1.
 - Validate all three accounts by calling /api/v1/auth/login.
 - Confirm "/" response starts with "<!DOCTYPE html>".
@@ -270,7 +278,7 @@ Deliverables:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
-# Optional: sequential single-threaded prereqs — .\scripts\build-release.ps1 -Sequential
+# Optional: parallel prereqs on build machine only — .\scripts\build-release.ps1 -ParallelPrereqs
 powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/start.ps1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/stop.ps1"
 ```

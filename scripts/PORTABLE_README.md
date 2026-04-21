@@ -34,3 +34,12 @@
 
 - Service binds `0.0.0.0:3000` by default.
 - If LAN clients cannot connect, allow inbound TCP 3000 in Windows Firewall.
+
+## Runtime concurrency (Uvicorn workers)
+
+This is **not** related to whether `build-release.ps1` used parallel npm/pip on the build machine.
+
+- **`TOOLBOX_WORKERS`**: number of backend processes. If unset: **2** when `DATABASE_URL` is PostgreSQL, **1** when SQLite (portable single-file DB).
+- **`SQLALCHEMY_POOL_SIZE` / `SQLALCHEMY_MAX_OVERFLOW`**: per-process DB pool (PostgreSQL only). Defaults: `4` and `2`.
+
+Place a `.env` next to `toolbox-backend.exe` (package root) or set variables before `start.cmd`. See `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1 for sizing notes (e.g. ~10 concurrent users on 1 vCPU / 2GB PostgreSQL).

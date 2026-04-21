@@ -128,6 +128,10 @@ backend\.venv\Scripts\python.exe scripts/migrate_sqlite_to_postgres.py --sqlite 
 
 `database.py` 在 `Tool.behavior_catalog_json` **为空**时会用 `default_behavior_catalogs()` 填充。若你已落库后**再改**行为 key，需要**迁移或手工更新**对应行，否则历史日志或新日志的标签可能不符合预期。
 
+### 1.9.1 生产运行：Uvicorn worker 与 PostgreSQL 连接池
+
+**与打包脚本无关**：`scripts/build-release.ps1` 默认**顺序**构建；运行时并发由 **`backend/run_server.py`** 的 Uvicorn `workers` 控制（环境变量 `TOOLBOX_WORKERS`，未设置时 PostgreSQL 默认 **2**、SQLite 文件 **1**）。在约 **20～50** 用户、峰值约 **10** 人同时访问、RDS **1 vCPU / 2GB** 的假设下，**2 个 worker** 为推荐起点；连接池默认 `SQLALCHEMY_POOL_SIZE=4`、`SQLALCHEMY_MAX_OVERFLOW=2`（每进程），详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1**。
+
 ### 1.10 质量闸门（合并前建议）
 
 在仓库根目录执行：

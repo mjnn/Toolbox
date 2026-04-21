@@ -43,7 +43,16 @@ def _is_sqlite(url: str) -> bool:
 def _engine_kwargs(url: str) -> dict:
     if _is_sqlite(url):
         return {"connect_args": {"check_same_thread": False}}
-    return {"pool_pre_ping": True}
+    # PostgreSQL：每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)，需与 RDS 规格匹配
+    pool_size = int(os.getenv("SQLALCHEMY_POOL_SIZE", "4"))
+    max_overflow = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))
+    pool_size = max(1, min(pool_size, 32))
+    max_overflow = max(0, min(max_overflow, 32))
+    return {
+        "pool_pre_ping": True,
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+    }
 
 
 def _should_echo_sql() -> bool:

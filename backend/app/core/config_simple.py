@@ -30,6 +30,9 @@ else:
 # 数据库：默认本地 SQLite；生产可用
 # postgresql+psycopg2://user:pass@host:5432/dbname?sslmode=require
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./app.db").strip()
+# 以下由 run_server.py / database.py 读取（不在本文件赋值）：
+# TOOLBOX_WORKERS — Uvicorn 进程数；未设置时 PG 默认 2、SQLite 1
+# SQLALCHEMY_POOL_SIZE / SQLALCHEMY_MAX_OVERFLOW — PostgreSQL 连接池（默认 4 / 2）
 
 # JWT
 SECRET_KEY = os.getenv("SECRET_KEY", "your-strong-secret-key-change-in-production")
