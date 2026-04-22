@@ -8,7 +8,7 @@
         <div class="header-right">
           <el-dropdown @command="handleCommand">
             <div class="user-info">
-              <el-avatar :size="36" :style="{ backgroundColor: '#409EFF' }">
+              <el-avatar :size="36" :src="avatarDisplayUrl" :style="{ backgroundColor: '#409EFF' }">
                 {{ userInitial }}
               </el-avatar>
               <span class="username">{{ userInfo?.full_name || userInfo?.username }}</span>
@@ -62,6 +62,10 @@
             <el-menu-item v-if="userInfo?.is_superuser" index="/feedback-admin">
               <el-icon><chat-line-round /></el-icon>
               <span>反馈管理</span>
+            </el-menu-item>
+            <el-menu-item v-if="userInfo?.is_superuser" index="/system-db-optimization">
+              <el-icon><setting /></el-icon>
+              <span>数据库优化</span>
             </el-menu-item>
           </el-menu>
         </el-aside>
@@ -320,6 +324,7 @@ import { notificationsApi } from '@/api/notifications'
 import { adminApi } from '@/api/admin'
 import FeedbackDialog from '@/components/FeedbackDialog.vue'
 import { getFeedbackAdminBadgeCount } from '@/utils/feedbackAdminBadge'
+import { buildAvatarDisplaySrc } from '@/utils/avatarDisplayUrl'
 import { formatDateTime as formatDate, formatShanghaiCalendarHeader } from '@/utils/datetime'
 import type { ToolAnnouncementInDB } from '@/api/types'
 
@@ -339,6 +344,7 @@ const menuActiveIndex = computed(() => {
   if (p.startsWith('/permissions')) return '/permissions'
   if (p.startsWith('/audit-logs')) return '/audit-logs'
   if (p.startsWith('/feedback-admin')) return '/feedback-admin'
+  if (p.startsWith('/system-db-optimization')) return '/system-db-optimization'
   // 首页 `/` 等：不高亮任一菜单项（避免误把「所有工具」当作始终选中）
   return ''
 })
@@ -346,6 +352,10 @@ const userInitial = computed(() => {
   const name = userInfo.value?.full_name || userInfo.value?.username || 'U'
   return name.charAt(0).toUpperCase()
 })
+
+const avatarDisplayUrl = computed(() =>
+  buildAvatarDisplaySrc(userInfo.value?.avatar_url, userInfo.value?.updated_at),
+)
 
 const currentDate = ref('')
 const userCount = ref(0)

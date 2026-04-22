@@ -22,6 +22,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/welcome',
+    name: 'Welcome',
+    component: () => import('@/views/Tools.vue'),
+    meta: { requiresAuth: false, publicTools: true }
+  },
+  {
     path: '/users',
     name: 'Users',
     component: () => import('@/views/Users.vue'),
@@ -86,6 +92,12 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
+    path: '/system-db-optimization',
+    name: 'SystemDbOptimization',
+    component: () => import('@/views/DatabaseOptimization.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
@@ -102,7 +114,7 @@ router.beforeEach(async (to, from, next) => {
   const isAuthenticated = authStore.isAuthenticated
 
   if (to.meta.requiresAuth && !isAuthenticated) {
-    next('/login')
+    next('/welcome')
     return
   }
   if ((to.path === '/login' || to.path === '/register') && isAuthenticated) {

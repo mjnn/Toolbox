@@ -17,15 +17,34 @@ if _env_path.is_file():
 API_V1_STR = "/api/v1"
 PROJECT_NAME = "Tools Platform"
 
-# CORS — 支持 JSON 数组字符串，与 backend/.env 示例一致
-_cors_raw = os.getenv("BACKEND_CORS_ORIGINS")
-if _cors_raw:
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    default = ["http://localhost:5173", "http://localhost:3000"]
+    text = (raw or "").strip()
+    if not text:
+        return default
     try:
-        BACKEND_CORS_ORIGINS = json.loads(_cors_raw)
+        parsed = json.loads(text)
+        if isinstance(parsed, list):
+            values = [str(v).strip() for v in parsed if str(v).strip()]
+            if values:
+                return values
     except json.JSONDecodeError:
-        BACKEND_CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
-else:
-    BACKEND_CORS_ORIGINS = ["http://localhost:5173", "http://localhost:3000"]
+        pass
+
+    # 兼容非严格 JSON 输入（例如 [http://a,https://b] 或带转义字符）。
+    normalized = text.replace("\\", "").strip()
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    values = [
+        item.strip().strip('"').strip("'")
+        for item in normalized.split(",")
+        if item.strip().strip('"').strip("'")
+    ]
+    return values or default
+
+
+# CORS — 支持 JSON 数组字符串，兼容非严格数组格式输入
+BACKEND_CORS_ORIGINS = _parse_cors_origins(os.getenv("BACKEND_CORS_ORIGINS"))
 
 def _allow_dev_sqlite() -> bool:
     return os.getenv("TOOLBOX_ALLOW_SQLITE_DEV", "").strip().lower() in ("1", "true", "yes")

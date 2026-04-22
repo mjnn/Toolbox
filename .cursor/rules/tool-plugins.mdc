@@ -8,6 +8,7 @@ globs:
 
 # 工具插件（与宿主解耦）
 
+- 默认采用 `.cursor/rules/agent-universal-task-template.mdc` 的任务归类：B/C（新增或修改工具）优先插件化；A/D（涉及宿主）需明确最小改动面与回归清单后再改宿主。
 - **宿主**负责 IAM、工具目录、`ToolManage` 通用 Tab、`ensure_tool_access`、审计路径约定；见 `docs/TOOL_INTEGRATION_STANDARD.md`。仓库总览与 Agent 标准流程见 `docs/PROJECT_AND_AGENT_GUIDE.md`。
 - **新工具或改某一工具**：优先只修改：
   - `backend/app/tools/plugins/<tool_folder>/`（`routes.py` + `tool.manifest.json`）

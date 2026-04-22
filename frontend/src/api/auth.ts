@@ -10,6 +10,7 @@ import type {
   RegisterResponse,
   PasswordChangePayload,
   AccountDeleteConfirm,
+  PublicNewToolSuggestionPayload,
 } from './types'
 
 interface ApiError extends Error {
@@ -209,6 +210,10 @@ export const authApi = {
     return api.post('/auth/register', data)
   },
 
+  submitPublicNewToolSuggestion(data: PublicNewToolSuggestionPayload): Promise<SuccessResponse> {
+    return api.post('/auth/public/new-tool-suggestion', data)
+  },
+
   // 刷新令牌
   refreshToken(data: RefreshTokenRequest): Promise<TokenResponse> {
     return api.post('/auth/refresh', data)
@@ -231,7 +236,9 @@ export const authApi = {
   uploadAvatar(file: File): Promise<UserInDB> {
     const fd = new FormData()
     fd.append('file', file)
-    return api.post('/users/me/avatar', fd)
+    // 必须使用 postForm：默认实例的 Content-Type 为 application/json 时，
+    // axios 会把 FormData 序列化成 JSON，导致后端收不到 multipart 文件。
+    return api.postForm('/users/me/avatar', fd)
   },
 
   // 登出

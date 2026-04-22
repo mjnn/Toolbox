@@ -2,14 +2,14 @@
   <div class="tool-detail-container">
     <el-page-header @back="goBack" title="返回">
       <template #content>
-        <span class="page-header-title">{{ tool ? getToolDisplayName(tool.name) : '工具详情' }}</span>
+        <span class="page-header-title">{{ tool ? resolveToolDisplayName(tool.name, tool.display_name) : '工具详情' }}</span>
       </template>
     </el-page-header>
 
     <el-card class="tool-summary-card" v-if="tool">
       <div class="tool-summary">
-        <div class="tool-name">{{ getToolDisplayName(tool.name) }}</div>
-        <div class="tool-desc">{{ tool.description || '暂无描述' }}</div>
+        <div class="tool-name">{{ resolveToolDisplayName(tool.name, tool.display_name) }}</div>
+        <div class="tool-desc">{{ resolveToolDisplayDescription(tool.description, tool.display_description) }}</div>
         <div class="tool-meta">
           <span>发版版本 {{ tool.version }}</span>
           <span v-if="tool.spec_revision" class="spec-rev">规格修订 {{ tool.spec_revision }}</span>
@@ -67,7 +67,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { toolsApi } from '@/api/tools'
 import { useAuthStore } from '@/stores/auth'
-import { getToolDisplayName } from '@/utils/toolDisplay'
+import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import { resolveToolDetailPanel } from '@/tools/registry'
 import { goBackOrFallback } from '@/utils/navigation'

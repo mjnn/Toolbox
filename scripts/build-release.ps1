@@ -1,7 +1,9 @@
 [CmdletBinding()]
 param(
     # 可选：并行执行「前端 npm run build」与「pip install + pyinstaller 安装」（仅缩短打包机耗时，与运行时 Uvicorn worker 无关）
-    [switch] $ParallelPrereqs
+    [switch] $ParallelPrereqs,
+    # 可选：将 backend/.env 打进发布包（默认不打，避免携带开发或敏感配置）
+    [switch] $IncludeBackendEnv
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,7 +81,7 @@ if ($ParallelPrereqs) {
 
 Write-Host "[3/5] Build backend executable..."
 Push-Location $BackendDir
-if (Test-Path ".\dist") { Remove-Item ".\dist" -Recurse -Force }
+if (Test-Path ".\dist_packaging") { Remove-Item ".\dist_packaging" -Recurse -Force }
 if (Test-Path ".\build") { Remove-Item ".\build" -Recurse -Force }
 if (Test-Path ".\run_server.spec") { Remove-Item ".\run_server.spec" -Force }
 
@@ -88,6 +90,7 @@ if (Test-Path ".\run_server.spec") { Remove-Item ".\run_server.spec" -Force }
     --clean `
     --name toolbox-backend `
     --onedir `
+    --distpath ".\dist_packaging" `
     --paths "." `
     --add-data "../frontend/dist;frontend/dist" `
     --add-data "../ref/toolboxweb;toolboxweb" `
@@ -119,6 +122,10 @@ if (Test-Path ".\run_server.spec") { Remove-Item ".\run_server.spec" -Force }
     --collect-all "selenium" `
     --collect-all "websocket" `
     "run_server.py"
+if ($LASTEXITCODE -ne 0) {
+    Pop-Location
+    throw "PyInstaller failed with exit code $LASTEXITCODE."
+}
 Pop-Location
 
 Write-Host "[4/5] Assemble portable package..."
@@ -136,24 +143,37 @@ if (Test-Path $ReleaseDir) {
     }
 }
 New-Item -ItemType Directory -Path $ReleaseDir | Out-Null
-Copy-Item (Join-Path $BackendDir "dist\toolbox-backend\*") $ReleaseDir -Recurse -Force
+Copy-Item (Join-Path $BackendDir "dist_packaging\toolbox-backend\*") $ReleaseDir -Recurse -Force
 
 Copy-Item (Join-Path $ProjectRoot "scripts\portable-start.ps1") (Join-Path $ReleaseDir "start.ps1") -Force
 Copy-Item (Join-Path $ProjectRoot "scripts\portable-start.cmd") (Join-Path $ReleaseDir "start.cmd") -Force
 Copy-Item (Join-Path $ProjectRoot "scripts\portable-stop.ps1") (Join-Path $ReleaseDir "stop.ps1") -Force
 Copy-Item (Join-Path $ProjectRoot "scripts\portable-stop.cmd") (Join-Path $ReleaseDir "stop.cmd") -Force
 Copy-Item (Join-Path $ProjectRoot "scripts\PORTABLE_README.md") (Join-Path $ReleaseDir "README.md") -Force
+Copy-Item (Join-Path $BackendDir ".env.example") (Join-Path $ReleaseDir ".env.example") -Force
+
+# Perf scripts + k6 scenarios (for on-machine acceptance after deployment)
+New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "scripts") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "perf") -Force | Out-Null
+Copy-Item (Join-Path $ProjectRoot "scripts\run-perf-k6.ps1") (Join-Path $ReleaseDir "scripts\run-perf-k6.ps1") -Force
+Copy-Item (Join-Path $ProjectRoot "scripts\run-perf-suite.ps1") (Join-Path $ReleaseDir "scripts\run-perf-suite.ps1") -Force
+Copy-Item (Join-Path $ProjectRoot "scripts\report-perf-k6.ps1") (Join-Path $ReleaseDir "scripts\report-perf-k6.ps1") -Force
+Copy-Item (Join-Path $ProjectRoot "perf\k6-api.js") (Join-Path $ReleaseDir "perf\k6-api.js") -Force
+Copy-Item (Join-Path $ProjectRoot "perf\README.md") (Join-Path $ReleaseDir "perf\README.md") -Force
 
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "logs") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "run") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "static\avatars") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $ReleaseDir "perf\results") -Force | Out-Null
 
 $BackendEnv = Join-Path $BackendDir ".env"
-if (Test-Path $BackendEnv) {
+if ($IncludeBackendEnv -and (Test-Path $BackendEnv)) {
     Copy-Item $BackendEnv (Join-Path $ReleaseDir ".env") -Force
-    Write-Host "Included backend/.env -> release/toolbox-portable/.env"
+    Write-Host "Included backend/.env -> release/toolbox-portable/.env (IncludeBackendEnv)"
+} elseif ($IncludeBackendEnv) {
+    Write-Warning "IncludeBackendEnv was set, but backend/.env not found."
 } else {
-    Write-Warning "backend/.env not found; portable package has no .env. Add DATABASE_URL etc. next to toolbox-backend.exe or copy backend/.env before build."
+    Write-Host "Skipped backend/.env by default. Fill release/toolbox-portable/.env from .env.example with production RDS config."
 }
 
 Write-Host "[5/5] Done."

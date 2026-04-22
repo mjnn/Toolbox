@@ -5,6 +5,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from app.models import Tool, ToolOwner, User, UserToolPermission, PermissionStatus
+from app.core.tool_visibility import is_tool_visible
 
 SERVICE_ID_REGISTRY_TOOL_NAME = "service-id-registry"
 MOS_INTEGRATION_TOOLBOX_TOOL_NAME = "mos-integration-toolbox"
@@ -13,7 +14,7 @@ RSA_TOKEN_LIVESTREAM_TOOL_NAME = "rsa-token-livestream"
 
 def get_tool_or_404(db: Session, tool_id: int) -> Tool:
     tool = db.get(Tool, tool_id)
-    if not tool:
+    if not tool or not is_tool_visible(tool.name):
         raise HTTPException(status_code=404, detail="工具不存在")
     return tool
 

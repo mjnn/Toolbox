@@ -61,11 +61,27 @@ async def get_current_active_user(
 
 ALLOWED_AVATAR_TYPES = {
     "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",  # 部分客户端会发送非标准 MIME
     "image/png": ".png",
     "image/webp": ".webp",
     "image/gif": ".gif",
 }
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
+
+
+def _avatar_content_type_from_bytes(data: bytes) -> Optional[str]:
+    """当 UploadFile 未带可靠 MIME 时，用魔数识别（与 Pillow 无关，仅看文件头）。"""
+    if len(data) < 12:
+        return None
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 # API端点
 @router.get("/me", response_model=UserInDB)
@@ -311,15 +327,20 @@ async def upload_my_avatar(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ct = file.content_type or ""
-    if ct not in ALLOWED_AVATAR_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="不支持的图片类型（仅支持 JPEG、PNG、WebP、GIF）",
-        )
     data = await file.read()
     if len(data) > MAX_AVATAR_BYTES:
         raise HTTPException(status_code=400, detail="文件过大（最大 2MB）")
+
+    ct = (file.content_type or "").split(";")[0].strip()
+    if ct not in ALLOWED_AVATAR_TYPES:
+        sniffed = _avatar_content_type_from_bytes(data)
+        if sniffed in ALLOWED_AVATAR_TYPES:
+            ct = sniffed
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="不支持的图片类型（仅支持 JPEG、PNG、WebP、GIF）",
+            )
 
     av_dir = Path("static") / "avatars"
     av_dir.mkdir(parents=True, exist_ok=True)

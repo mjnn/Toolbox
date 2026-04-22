@@ -4,7 +4,7 @@
       type="info"
       :closable="false"
       show-icon
-      title="直播地址由工具负责人统一维护。若显示占位页，表示当前直播已临时关闭。"
+      title="默认展示管理端配置的内网直播地址。若显示占位页，表示当前直播已临时关闭。"
     />
 
     <el-card shadow="never">
@@ -31,6 +31,8 @@
         <div v-else class="stream-wrapper">
           <div class="stream-meta">
             <el-tag type="success">直播中</el-tag>
+            <span>内网展示地址：{{ config.stream_page_url }}</span>
+            <span>系统转发地址：{{ config.internal_flv_proxy_url }}</span>
             <span>推流服务器：{{ config.stream_server }}</span>
             <span>推流码：{{ config.stream_key }}</span>
           </div>

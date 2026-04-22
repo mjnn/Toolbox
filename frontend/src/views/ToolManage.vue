@@ -2,7 +2,7 @@
   <div class="tool-manage-page">
     <el-page-header @back="goBack" title="返回">
       <template #content>
-        <span class="page-header-title">{{ tool?.name ? `${getToolDisplayName(tool.name)} · 管理` : '工具管理' }}</span>
+        <span class="page-header-title">{{ tool?.name ? `${resolveToolDisplayName(tool.name, tool.display_name)} · 管理` : '工具管理' }}</span>
       </template>
     </el-page-header>
 
@@ -42,6 +42,41 @@
                   </el-form-item>
                 </el-form>
               </el-card>
+              </el-tab-pane>
+
+              <el-tab-pane label="展示信息" name="display">
+                <el-card class="nested-card" shadow="never">
+                  <template #header>注册与工具卡片展示信息</template>
+                  <p class="section-hint">支持覆盖工具展示名称与说明，将同步用于注册页面的工具下拉与工具列表卡片。</p>
+                  <el-form label-width="128px" class="display-form">
+                    <el-form-item label="展示名称">
+                      <el-input
+                        v-model="displayForm.display_name"
+                        maxlength="100"
+                        placeholder="为空时使用系统默认名称"
+                        style="max-width: 420px"
+                      />
+                    </el-form-item>
+                    <el-form-item label="展示说明">
+                      <el-input
+                        v-model="displayForm.display_description"
+                        type="textarea"
+                        :rows="3"
+                        maxlength="1000"
+                        show-word-limit
+                        placeholder="为空时使用系统默认说明"
+                        style="max-width: 560px"
+                      />
+                    </el-form-item>
+                    <el-form-item>
+                      <el-button type="primary" :loading="savingDisplay" @click="saveDisplayConfig">保存展示信息</el-button>
+                    </el-form-item>
+                  </el-form>
+                  <p v-if="tool" class="section-hint">
+                    当前预览：{{ resolveToolDisplayName(tool.name, displayForm.display_name || tool.display_name) }} -
+                    {{ resolveToolDisplayDescription(tool.description, displayForm.display_description || tool.display_description) }}
+                  </p>
+                </el-card>
               </el-tab-pane>
 
               <el-tab-pane label="发版管理" name="release">
@@ -278,7 +313,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { toolsApi } from '@/api/tools'
 import { adminApi } from '@/api/admin'
-import { getToolDisplayName } from '@/utils/toolDisplay'
+import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import { resolveManageExtraTabs } from '@/tools/registry'
 import type {
@@ -321,7 +356,12 @@ const feedbackPage = ref(1)
 const feedbackPageSize = ref(20)
 const activeTab = ref('general')
 const generalTab = ref('status')
-const GENERAL_TAB_NAMES = ['status', 'release', 'license', 'usage', 'feedback'] as const
+const GENERAL_TAB_NAMES = ['status', 'display', 'release', 'license', 'usage', 'feedback'] as const
+const savingDisplay = ref(false)
+const displayForm = ref({
+  display_name: '',
+  display_description: '',
+})
 
 const releaseForm = ref({
   version: '',
@@ -364,6 +404,7 @@ let topTabInitialized = false
 watch(
   manageExtraTabs,
   (tabs) => {
+    if (!tool.value) return
     const available = ['general', ...tabs.map((tab) => tab.name)]
     if (!topTabInitialized) {
       const queryTopTab = queryFirst(route.query.manageTab)
@@ -393,6 +434,16 @@ watch(
   (v) => {
     if (v !== undefined) statusFormActive.value = v
   }
+)
+
+watch(
+  () => tool.value,
+  (v) => {
+    if (!v) return
+    displayForm.value.display_name = v.display_name || ''
+    displayForm.value.display_description = v.display_description || ''
+  },
+  { immediate: true }
 )
 
 /** 返回进入管理页前的页面（如「我的工具」）；无站内历史时回到全部工具 */
@@ -590,6 +641,22 @@ const saveToolStatus = async () => {
   }
 }
 
+const saveDisplayConfig = async () => {
+  if (!tool.value) return
+  savingDisplay.value = true
+  try {
+    tool.value = await adminApi.updateToolDisplayConfig(toolId, {
+      display_name: displayForm.value.display_name.trim() || null,
+      display_description: displayForm.value.display_description.trim() || null,
+    })
+    ElMessage.success('展示信息已更新')
+  } catch (error: any) {
+    ElMessage.error(error.message || '更新展示信息失败')
+  } finally {
+    savingDisplay.value = false
+  }
+}
+
 const fetchUsageLogs = async () => {
   if (accessDenied.value) return
   loadingLogs.value = true
@@ -745,6 +812,10 @@ onMounted(async () => {
 .release-form {
   margin-bottom: 16px;
   max-width: 640px;
+}
+
+.display-form {
+  margin-bottom: 12px;
 }
 
 </style>

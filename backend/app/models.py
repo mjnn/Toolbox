@@ -53,6 +53,17 @@ class Tool(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ToolDisplayConfig(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("tool_id", name="uq_tool_display_config_tool"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    display_name: Optional[str] = Field(default=None, max_length=100)
+    display_description: Optional[str] = Field(default=None, max_length=1000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class ToolRelease(SQLModel, table=True):
     """工具发版记录：每次发版一条，用于详情页展示与发版通知。"""
 
@@ -155,6 +166,13 @@ class ServiceRuleCategory(str, Enum):
     APN_TYPE = "apn_type"
 
 
+class ServiceFieldInputType(str, Enum):
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    SINGLE_SELECT = "single_select"
+    MULTI_SELECT = "multi_select"
+
+
 class ServiceIdRegistryEntry(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("service_id", name="uq_service_id_registry_service_id"),
@@ -198,6 +216,57 @@ class ServiceIdRuleOption(SQLModel, table=True):
     created_by: int = Field(foreign_key="user.id", index=True)
     updated_by: int = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ServiceIdFieldConfig(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "field_key", name="uq_service_id_field_config"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    field_key: str = Field(index=True, max_length=64)
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    required: Optional[bool] = Field(default=None)
+    min_length: Optional[int] = Field(default=None)
+    max_length: Optional[int] = Field(default=None)
+    regex_pattern: Optional[str] = Field(default=None, max_length=500)
+    regex_error_message: Optional[str] = Field(default=None, max_length=200)
+    allowed_values_json: Optional[str] = Field(default=None, max_length=4000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ServiceIdFormFieldDefinition(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "field_key", name="uq_service_id_form_field_def"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    field_key: str = Field(index=True, max_length=64)
+    label: str = Field(max_length=100)
+    input_type: ServiceFieldInputType = Field(default=ServiceFieldInputType.TEXT)
+    is_builtin: bool = Field(default=False, index=True)
+    is_active: bool = Field(default=True, index=True)
+    sort_order: int = Field(default=0, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ServiceIdEntryCustomFieldValue(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("entry_id", "field_key", name="uq_service_id_entry_custom_field_value"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entry_id: int = Field(foreign_key="serviceidregistryentry.id", index=True)
+    field_key: str = Field(index=True, max_length=64)
+    value_json: str = Field(max_length=4000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 

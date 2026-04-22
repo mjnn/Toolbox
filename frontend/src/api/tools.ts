@@ -12,6 +12,9 @@ import type {
   ServiceIdRuleOptionGroup,
   PaginatedServiceIdRuleOptions,
   ServiceRuleCategory,
+  FormFieldConfigListResponse,
+  FormFieldConfigCreatePayload,
+  FormFieldInputType,
   RsaLivestreamConfig,
   RsaLivestreamConfigUpdatePayload,
 } from './types'
@@ -90,6 +93,46 @@ export const toolsApi = {
 
   deleteServiceIdRuleOption(toolId: number, id: number): Promise<{ success: boolean; message: string }> {
     return api.delete(`/tools/${toolId}/features/service-id-rule-options`, { data: { id } })
+  },
+
+  getServiceIdFieldConfigs(toolId: number): Promise<FormFieldConfigListResponse> {
+    return api.get(`/tools/${toolId}/features/service-id-field-config`)
+  },
+
+  updateServiceIdFieldConfigs(
+    toolId: number,
+    items: Array<{
+      field_key: string
+      label?: string | null
+      input_type?: FormFieldInputType | null
+      is_active?: boolean | null
+      sort_order?: number | null
+      help_text?: string | null
+      required?: boolean | null
+      min_length?: number | null
+      max_length?: number | null
+      regex_pattern?: string | null
+      regex_error_message?: string | null
+      allowed_values?: string[] | null
+    }>
+  ): Promise<FormFieldConfigListResponse> {
+    return api.put(`/tools/${toolId}/features/service-id-field-config`, { items })
+  },
+
+  createServiceIdFieldConfig(
+    toolId: number,
+    payload: FormFieldConfigCreatePayload
+  ) {
+    return api.post(`/tools/${toolId}/features/service-id-field-config`, payload)
+  },
+
+  deleteServiceIdFieldConfig(
+    toolId: number,
+    fieldKey: string
+  ): Promise<{ success: boolean; message: string }> {
+    return api.delete(`/tools/${toolId}/features/service-id-field-config`, {
+      data: { field_key: fieldKey }
+    })
   },
 
   exportServiceIdEntries(toolId: number): Promise<Blob> {
@@ -355,6 +398,67 @@ export const toolsApi = {
     }
   }> {
     return api.put(`/tools/${toolId}/features/mos-manage/runtime-credentials`, payload)
+  },
+
+  getMosDbOptimizationConfig(
+    toolId: number
+  ): Promise<{
+    success: boolean
+    message: string
+    data: {
+      database_url_masked: string
+      is_remote_database: boolean
+      current_env: {
+        SQLALCHEMY_POOL_SIZE: number
+        SQLALCHEMY_MAX_OVERFLOW: number
+        SQLALCHEMY_POOL_TIMEOUT: number
+        SQLALCHEMY_POOL_RECYCLE: number
+        TOOLBOX_WORKERS: number
+        SQLALCHEMY_STATEMENT_TIMEOUT_MS: number
+      }
+      saved_overrides: Record<string, number>
+      recommendation: {
+        pool_size: number
+        max_overflow: number
+        pool_timeout_seconds: number
+        pool_recycle_seconds: number
+        workers: number
+        statement_timeout_ms: number
+      }
+      requires_restart: boolean
+      note: string
+    }
+  }> {
+    return api.get(`/tools/${toolId}/features/mos-manage/db-optimization`)
+  },
+
+  updateMosDbOptimizationConfig(
+    toolId: number,
+    payload: {
+      pool_size?: number
+      max_overflow?: number
+      pool_timeout_seconds?: number
+      pool_recycle_seconds?: number
+      workers?: number
+      statement_timeout_ms?: number
+      apply_to_env?: boolean
+    }
+  ): Promise<{
+    success: boolean
+    message: string
+    data: {
+      saved_overrides: Record<string, number>
+      applied_to_env: boolean
+      requires_restart: boolean
+    }
+  }> {
+    return api.put(`/tools/${toolId}/features/mos-manage/db-optimization`, payload)
+  },
+
+  pingMosDbOptimization(
+    toolId: number
+  ): Promise<{ success: boolean; message: string; data: { elapsed_ms: number } }> {
+    return api.post(`/tools/${toolId}/features/mos-manage/db-optimization/ping`)
   },
 
   listMosManageChangeLogs(

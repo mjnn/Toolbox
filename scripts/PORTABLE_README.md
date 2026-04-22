@@ -16,11 +16,11 @@
 
 - Double-click `stop.cmd`
 
-## Default Accounts (auto-created at startup)
+## Accounts and Database
 
-- Admin: `admin / admin123`
-- Feature owner: `owner / owner123`
-- Normal user: `user / user12345`
+- Portable startup does **not** auto-create demo accounts (`admin/owner/user`).
+- Deploy mode is expected to connect to your production PostgreSQL (RDS).
+- Copy `.env.example` to `.env` in the package root and fill production values (at least `DATABASE_URL`, `SECRET_KEY`, `BACKEND_CORS_ORIGINS`).
 
 ## Logs
 
@@ -29,6 +29,24 @@
 - Backend API access: `logs/backend-access.log`
 - Frontend access: `logs/frontend-access.log`
 - App mixed log: `logs/app.log`
+
+## Built-in performance acceptance scripts
+
+This package now includes k6-based acceptance scripts:
+
+- `scripts/run-perf-k6.ps1`: run one profile (`baseline` / `stress` / `custom`)
+- `scripts/run-perf-suite.ps1`: run `baseline + stress + report`
+- `scripts/report-perf-k6.ps1`: summarize one or more k6 JSON files
+- Scenario file: `perf/k6-api.js`
+- Output folder: `perf/results`
+
+Quick example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-perf-suite.ps1 -BaseUrl "http://127.0.0.1:3000" -Token "<access_token>" -Label "deploy" -Quick
+```
+
+If k6 is not in PATH, install k6 on the deployment machine first.
 
 ## LAN Access Note
 
@@ -42,4 +60,8 @@ This is **not** related to whether `build-release.ps1` used parallel npm/pip on 
 - **`TOOLBOX_WORKERS`**: number of backend processes when running from **source** (default **2** if unset). The **frozen `toolbox-backend.exe` always uses 1 worker** (PyInstaller + multiprocessing limitation).
 - **`SQLALCHEMY_POOL_SIZE` / `SQLALCHEMY_MAX_OVERFLOW`**: per-process DB pool (PostgreSQL only). Defaults: `4` and `2`.
 
-**Configuration**: When you build with `scripts/build-release.ps1`, if **`backend/.env`** exists on the build machine, it is **copied to** `.env` next to `toolbox-backend.exe` automatically. Otherwise add `DATABASE_URL` (PostgreSQL) yourself in the package root. See `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` §3.1 for pool/worker notes. **Do not share zip copies that contain production secrets** unless intended.
+**Configuration**:
+
+- `scripts/build-release.ps1` now copies `backend/.env.example` into the package as `.env.example`.
+- By default it **does not** copy `backend/.env` (to avoid leaking local/prod secrets).
+- If you really need to include it, build with `-IncludeBackendEnv`.

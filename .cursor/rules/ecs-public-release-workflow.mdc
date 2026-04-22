@@ -1,0 +1,45 @@
+---
+description: ECS 外网发布标准流程（Service ID 单工具版）
+alwaysApply: true
+---
+
+# ECS 外网发布流程（固定执行）
+
+- 当用户说“部署到ECS / 发布外网版 / 推到阿里云镜像仓库”时，默认执行本流程。
+- 默认目标：`ssh ecs-main`（`root@47.116.180.173`），先跑 `hostname && uname -a` 验证连通。
+- 默认镜像仓库：
+  - Registry: `crpi-02k3y8iudey5q0vb.cn-shanghai.personal.cr.aliyuncs.com`
+  - Repo: `mirror_ns/tool_box`
+  - Tag: 用户给定版本号（若未给，先询问）。
+- 默认公网入口：`47.116.180.173`。
+
+## 本机发布步骤（必须按序）
+
+1. `docker build -t <registry/repo:tag> .`
+2. `docker login --username=MjnnAliCloud <registry>`（优先 `--password-stdin`，禁止回显明文密码）
+3. `docker push <registry/repo:tag>`
+4. 若用户提到“部署机包/离线包”，追加执行：
+   - `docker save -o release/tool_box_<tag>_ecs.tar <image>`
+   - 输出 SHA256 校验值。
+
+## ECS 部署步骤（必须按序）
+
+1. ECS 上执行 `docker login` 与 `docker pull <image>`
+2. 若存在旧容器 `tool-box-public`，先删除再检测端口占用（`ss -ltn`）；优先 `3000`，冲突时选空闲端口并告知用户
+3. 启动容器（或替换旧容器）时必须带：
+   - `DATABASE_URL=<云端PGSQL连接串>`
+   - `TOOLBOX_EXTERNAL_PUBLIC_IP=47.116.180.173`
+   - `TOOLBOX_VISIBLE_TOOL_KEYS=service-id-registry`
+   - `TOOLBOX_WORKERS=1`
+   - `BACKEND_CORS_ORIGINS=["http://47.116.180.173","https://47.116.180.173","http://localhost","http://127.0.0.1"]`
+4. 健康检查：`curl http://127.0.0.1:<port>/health`，并返回 `docker ps` 与关键日志
+5. 外网工具可见性校验（必须）：
+   - `curl -H 'Host: 47.116.180.173' http://127.0.0.1:<port>/api/v1/tools/?skip=0&limit=10`
+   - 期望仅返回 `service-id-registry`。
+
+## 失败兜底（必须执行）
+
+- 若健康检查失败且日志卡在 `Waiting for application startup`，优先排查 ECS 到 RDS 5432 连通性。
+- 快速检查：`timeout 8 bash -lc 'cat < /dev/null > /dev/tcp/<rds-host>/5432'`
+- 若不通，明确提示用户先放通 RDS 白名单/安全组，再重试部署。
+

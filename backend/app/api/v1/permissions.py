@@ -18,6 +18,7 @@ from app.schemas import (
     SuccessResponse
 )
 from app.api.v1.users import get_current_active_user
+from app.core.tool_visibility import is_tool_visible
 
 router = APIRouter()
 
@@ -72,7 +73,7 @@ async def apply_for_permission(
 
     # 检查工具是否存在
     tool = db.get(Tool, tool_id)
-    if not tool or not tool.is_active:
+    if not tool or not tool.is_active or not is_tool_visible(tool.name):
         raise HTTPException(status_code=404, detail="工具不存在或暂不可用")
     
     # 检查是否已有申请记录
@@ -147,6 +148,8 @@ async def get_my_permissions(
     result = []
     for perm in permissions:
         tool = db.get(Tool, perm.tool_id)
+        if not tool or not is_tool_visible(tool.name):
+            continue
         reviewer = db.get(User, perm.reviewed_by) if perm.reviewed_by else None
         
         # 创建包含详细信息的对象

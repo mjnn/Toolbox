@@ -4,11 +4,13 @@
   "display_name": "RSA Token 直播",
   "feature_slugs": [
     "livestream/config",
-    "livestream/manage-config"
+    "livestream/manage-config",
+    "livestream/flv-proxy"
   ],
   "behavior_catalog": [
     { "key": "livestream/config", "label": "RSA Token 直播配置查看" },
-    { "key": "livestream/manage-config", "label": "RSA Token 直播配置管理" }
+    { "key": "livestream/manage-config", "label": "RSA Token 直播配置管理" },
+    { "key": "livestream/flv-proxy", "label": "RSA Token 直播内网转发播放" }
   ],
   "frontend": {
     "detail_panel_module": "RsaTokenLivestreamPanel",

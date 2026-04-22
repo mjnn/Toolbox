@@ -13,15 +13,16 @@
           {{ userInitial }}
         </el-avatar>
         <el-upload
+          ref="avatarUploadRef"
           class="avatar-uploader"
+          :auto-upload="false"
           :show-file-list="false"
-          accept="image/jpeg,image/png,image/webp,image/gif"
-          :before-upload="beforeAvatarUpload"
-          :http-request="handleAvatarUpload"
+          accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif"
+          :on-change="onAvatarFileChange"
         >
-          <el-button type="primary" :loading="avatarLoading">上传头像</el-button>
+          <el-button type="primary">上传头像</el-button>
         </el-upload>
-        <span class="avatar-hint">支持 JPG / PNG / WebP / GIF，最大 2MB</span>
+        <span class="avatar-hint">支持 JPG / PNG / WebP / GIF，最大 2MB；上传后可拖拽调整并圆形裁剪</span>
       </div>
     </el-card>
 
@@ -96,28 +97,79 @@
         <el-button type="danger" :loading="deleteLoading" @click="confirmDeleteAccount">确认注销</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="cropDialogVisible"
+      title="裁剪圆形头像"
+      width="420px"
+      destroy-on-close
+      class="avatar-crop-dialog"
+      @closed="onCropDialogClosed"
+    >
+      <p class="crop-tip">拖拽图片调整位置，拖动滑块缩放；确认后以 PNG 上传。</p>
+      <div class="crop-stage-wrap">
+        <div
+          class="crop-stage"
+          @mousedown.prevent="onCropPointerDown"
+        >
+          <canvas
+            ref="cropCanvasRef"
+            class="crop-canvas"
+            :width="AVATAR_CANVAS"
+            :height="AVATAR_CANVAS"
+          />
+        </div>
+      </div>
+      <div class="crop-zoom">
+        <span class="crop-zoom-label">缩放</span>
+        <el-slider v-model="cropZoom" :min="1" :max="2.8" :step="0.02" @input="drawCropPreview" />
+      </div>
+      <template #footer>
+        <el-button @click="cropDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="avatarLoading" @click="confirmCroppedAvatar">确定并上传</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, shallowRef, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules, type UploadRawFile } from 'element-plus'
+import { ElMessage, type FormInstance, type FormRules, type UploadInstance, type UploadProps } from 'element-plus'
+import type { UploadFile, UploadRawFile } from 'element-plus'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { goBackOrFallback } from '@/utils/navigation'
+import { buildAvatarDisplaySrc } from '@/utils/avatarDisplayUrl'
+
+const AVATAR_CANVAS = 256
 
 const router = useRouter()
 const authStore = useAuthStore()
 
 const profileFormRef = ref<FormInstance>()
 const pwdFormRef = ref<FormInstance>()
+const avatarUploadRef = ref<UploadInstance>()
+const cropCanvasRef = ref<HTMLCanvasElement | null>(null)
+
 const profileSaving = ref(false)
 const pwdSaving = ref(false)
 const avatarLoading = ref(false)
 const deleteLoading = ref(false)
 const deleteAccountVisible = ref(false)
 const deletePassword = ref('')
+
+const cropDialogVisible = ref(false)
+const cropZoom = ref(1)
+const cropPanX = ref(0)
+const cropPanY = ref(0)
+const cropCoverScale = ref(1)
+const cropImageEl = shallowRef<HTMLImageElement | null>(null)
+let cropObjectUrl = ''
+
+let cropDrag = false
+let cropLastClientX = 0
+let cropLastClientY = 0
 
 const profileForm = reactive({
   username: '',
@@ -167,12 +219,9 @@ const userInitial = computed(() => {
   return name.charAt(0).toUpperCase()
 })
 
-const avatarDisplayUrl = computed(() => {
-  const u = authStore.userInfo?.avatar_url
-  if (!u) return undefined
-  if (u.startsWith('http')) return u
-  return u
-})
+const avatarDisplayUrl = computed(() =>
+  buildAvatarDisplaySrc(authStore.userInfo?.avatar_url, authStore.userInfo?.updated_at),
+)
 
 const goBack = () => {
   goBackOrFallback(router, '/')
@@ -234,26 +283,180 @@ const savePassword = async () => {
   }
 }
 
-const beforeAvatarUpload = (rawFile: UploadRawFile) => {
-  const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(rawFile.type)
-  if (!ok) {
+const ALLOWED_AVATAR_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'])
+
+const extMimeFallback = (name: string): string | null => {
+  const lower = name.toLowerCase()
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return null
+}
+
+function effectiveAvatarMime(raw: UploadRawFile): string | null {
+  const t = (raw.type || '').trim().toLowerCase()
+  if (t && ALLOWED_AVATAR_MIMES.has(t)) return t === 'image/jpg' ? 'image/jpeg' : t
+  return extMimeFallback(raw.name)
+}
+
+const validateAvatarFile = (raw: UploadRawFile): boolean => {
+  const mime = effectiveAvatarMime(raw)
+  if (!mime) {
     ElMessage.error('仅支持 JPG、PNG、WebP、GIF')
     return false
   }
   const max = 2 * 1024 * 1024
-  if (rawFile.size > max) {
+  if (raw.size > max) {
     ElMessage.error('图片不能超过 2MB')
     return false
   }
   return true
 }
 
-const handleAvatarUpload = async (options: { file: UploadRawFile }) => {
+const paintAvatarCircle = (
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  img: HTMLImageElement,
+  coverScale: number,
+  zoom: number,
+  panX: number,
+  panY: number,
+) => {
+  const iw = img.naturalWidth
+  const ih = img.naturalHeight
+  ctx.clearRect(0, 0, size, size)
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2)
+  ctx.closePath()
+  ctx.clip()
+  const s = coverScale * zoom
+  ctx.translate(size / 2 + panX, size / 2 + panY)
+  ctx.scale(s, s)
+  ctx.drawImage(img, -iw / 2, -ih / 2)
+  ctx.restore()
+}
+
+const drawCropPreview = () => {
+  const canvas = cropCanvasRef.value
+  const img = cropImageEl.value
+  if (!canvas || !img) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  paintAvatarCircle(ctx, AVATAR_CANVAS, img, cropCoverScale.value, cropZoom.value, cropPanX.value, cropPanY.value)
+}
+
+const endCropDrag = () => {
+  if (!cropDrag) return
+  cropDrag = false
+  window.removeEventListener('mousemove', onCropPointerMove)
+  window.removeEventListener('mouseup', onCropPointerUp)
+}
+
+const onCropPointerMove = (e: MouseEvent) => {
+  if (!cropDrag) return
+  const dx = e.clientX - cropLastClientX
+  const dy = e.clientY - cropLastClientY
+  cropLastClientX = e.clientX
+  cropLastClientY = e.clientY
+  cropPanX.value += dx
+  cropPanY.value += dy
+  drawCropPreview()
+}
+
+const onCropPointerUp = () => {
+  endCropDrag()
+}
+
+const onCropPointerDown = (e: MouseEvent) => {
+  cropDrag = true
+  cropLastClientX = e.clientX
+  cropLastClientY = e.clientY
+  window.addEventListener('mousemove', onCropPointerMove)
+  window.addEventListener('mouseup', onCropPointerUp)
+}
+
+const onCropDialogClosed = () => {
+  endCropDrag()
+  if (cropObjectUrl) {
+    URL.revokeObjectURL(cropObjectUrl)
+    cropObjectUrl = ''
+  }
+  cropImageEl.value = null
+  cropZoom.value = 1
+  cropPanX.value = 0
+  cropPanY.value = 0
+}
+
+const openCropDialog = (raw: UploadRawFile) => {
+  onCropDialogClosed()
+  cropObjectUrl = URL.createObjectURL(raw)
+  const img = new Image()
+  img.onload = () => {
+    cropCoverScale.value = Math.max(AVATAR_CANVAS / img.naturalWidth, AVATAR_CANVAS / img.naturalHeight)
+    cropZoom.value = 1
+    cropPanX.value = 0
+    cropPanY.value = 0
+    cropImageEl.value = img
+    cropDialogVisible.value = true
+    nextTick(() => drawCropPreview())
+  }
+  img.onerror = () => {
+    ElMessage.error('图片无法读取')
+    URL.revokeObjectURL(cropObjectUrl)
+    cropObjectUrl = ''
+  }
+  img.src = cropObjectUrl
+}
+
+const onAvatarFileChange: UploadProps['onChange'] = (uploadFile: UploadFile) => {
+  const raw = uploadFile.raw
+  if (!raw) return
+  avatarUploadRef.value?.clearFiles()
+  if (!validateAvatarFile(raw)) return
+  openCropDialog(raw)
+}
+
+const confirmCroppedAvatar = async () => {
+  const img = cropImageEl.value
+  if (!img) {
+    ElMessage.warning('请先选择图片')
+    return
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = AVATAR_CANVAS
+  canvas.height = AVATAR_CANVAS
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    ElMessage.error('浏览器不支持裁剪')
+    return
+  }
+  paintAvatarCircle(ctx, AVATAR_CANVAS, img, cropCoverScale.value, cropZoom.value, cropPanX.value, cropPanY.value)
+
   avatarLoading.value = true
   try {
-    const u = await authApi.uploadAvatar(options.file as File)
+    const file = await new Promise<File>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('导出失败'))
+            return
+          }
+          resolve(new File([blob], 'avatar.png', { type: 'image/png' }))
+        },
+        'image/png',
+        0.92,
+      )
+    })
+    if (file.size > 2 * 1024 * 1024) {
+      ElMessage.error('裁剪后仍超过 2MB，请换一张较小的原图或缩小缩放')
+      return
+    }
+    const u = await authApi.uploadAvatar(file)
     authStore.setUserInfo(u)
     ElMessage.success('头像已更新')
+    cropDialogVisible.value = false
   } catch (e: any) {
     ElMessage.error(e.message || '上传失败')
   } finally {
@@ -325,5 +528,54 @@ const confirmDeleteAccount = async () => {
   margin: 0 0 12px;
   color: #606266;
   font-size: 14px;
+}
+
+.crop-tip {
+  margin: 0 0 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.crop-stage-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.crop-stage {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #dcdfe6 inset;
+  cursor: grab;
+  line-height: 0;
+  user-select: none;
+}
+
+.crop-stage:active {
+  cursor: grabbing;
+}
+
+.crop-canvas {
+  display: block;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+}
+
+.crop-zoom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.crop-zoom-label {
+  flex: 0 0 36px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.crop-zoom :deep(.el-slider) {
+  flex: 1;
 }
 </style>

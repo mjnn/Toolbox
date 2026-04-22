@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from sqlalchemy import text
+from sqlalchemy import event
 from sqlmodel import SQLModel, create_engine, Session, select
 import os
 import json
+import time
+import contextvars
 
 from app.core.config_simple import (
     DATABASE_URL,
@@ -21,8 +24,12 @@ from app.models import (  # noqa: F401 — imported for SQLModel metadata regist
     UserRole,
     Feedback,
     ToolOwner,
+    ToolDisplayConfig,
     ServiceIdRegistryEntry,
     ServiceIdRuleOption,
+    ServiceIdFieldConfig,
+    ServiceIdFormFieldDefinition,
+    ServiceIdEntryCustomFieldValue,
     MosTokenPoolEntry,
     RsaTokenLivestreamSetting,
 )
@@ -34,12 +41,21 @@ def _engine_kwargs(database_url: str) -> dict:
     # PostgreSQL：每 worker 独立连接池；总连接 ≈ workers × (pool_size + max_overflow)
     pool_size = int(os.getenv("SQLALCHEMY_POOL_SIZE", "4"))
     max_overflow = int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))
+    pool_timeout = int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30"))
+    pool_recycle = int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800"))
+    statement_timeout_ms = int(os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000"))
     pool_size = max(1, min(pool_size, 32))
     max_overflow = max(0, min(max_overflow, 32))
+    pool_timeout = max(5, min(pool_timeout, 120))
+    pool_recycle = max(30, min(pool_recycle, 7200))
+    statement_timeout_ms = max(1000, min(statement_timeout_ms, 120000))
     return {
         "pool_pre_ping": True,
         "pool_size": pool_size,
         "max_overflow": max_overflow,
+        "pool_timeout": pool_timeout,
+        "pool_recycle": pool_recycle,
+        "connect_args": {"options": f"-c statement_timeout={statement_timeout_ms}"},
     }
 
 
@@ -54,6 +70,40 @@ engine = create_engine(
     echo=_should_echo_sql(),
     **_engine_kwargs(_database_url),
 )
+
+_request_sql_timing_ctx: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "request_sql_timing",
+    default=None,
+)
+
+
+def reset_request_sql_timing() -> None:
+    _request_sql_timing_ctx.set({"db_ms": 0.0, "db_count": 0})
+
+
+def get_request_sql_timing() -> dict:
+    data = _request_sql_timing_ctx.get()
+    if not data:
+        return {"db_ms": 0.0, "db_count": 0}
+    return {"db_ms": float(data.get("db_ms", 0.0)), "db_count": int(data.get("db_count", 0))}
+
+
+@event.listens_for(engine, "before_cursor_execute")
+def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    conn.info["_query_started_at"] = time.perf_counter()
+
+
+@event.listens_for(engine, "after_cursor_execute")
+def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    started = conn.info.pop("_query_started_at", None)
+    if started is None:
+        return
+    timing = _request_sql_timing_ctx.get()
+    if timing is None:
+        return
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    timing["db_ms"] = float(timing.get("db_ms", 0.0)) + elapsed_ms
+    timing["db_count"] = int(timing.get("db_count", 0)) + 1
 
 SYSTEM_ROLES = {
     "tool_owner": "Can review and approve tool access requests",

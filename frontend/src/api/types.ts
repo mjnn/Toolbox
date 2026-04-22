@@ -30,6 +30,9 @@ export interface UserCreate {
   full_name: string
   department: string
   password: string
+  requested_tool_id?: number
+  requested_tool_reason?: string
+  registration_entry?: 'direct_register' | 'apply_tool'
 }
 
 export interface UserUpdate {
@@ -60,6 +63,12 @@ export interface AccountDeleteConfirm {
 export interface RegisterResponse {
   message: string
   username: string
+}
+
+export interface PublicNewToolSuggestionPayload {
+  nickname: string
+  contact?: string
+  content: string
 }
 
 export interface PasswordChangePayload {
@@ -94,6 +103,8 @@ export interface ToolInDB {
   id: number
   name: string
   description?: string | null
+  display_name?: string | null
+  display_description?: string | null
   version: string
   /** 需求/模板修订版本（如 v0.2），与发版时填写一致 */
   spec_revision?: string | null
@@ -179,6 +190,10 @@ export interface RoleAssignmentRequest {
   role_name: RoleName
 }
 
+export interface AdminResetPasswordPayload {
+  new_password: string
+}
+
 export interface ToolOwnerInDB {
   id: number
   tool_id: number
@@ -203,8 +218,45 @@ export interface PaginatedToolLicenseUsers {
   items: ToolLicenseUserRow[]
 }
 
+export type FormFieldInputType = 'text' | 'textarea' | 'single_select' | 'multi_select'
+export type FormFieldValue = string | string[]
+export type DynamicFormValues = Record<string, FormFieldValue>
+
+export interface FormFieldConfigItem {
+  field_key: string
+  label: string
+  input_type: FormFieldInputType
+  is_builtin: boolean
+  sort_order: number
+  help_text?: string | null
+  required: boolean
+  min_length?: number | null
+  max_length?: number | null
+  regex_pattern?: string | null
+  regex_error_message?: string | null
+  allowed_values: string[]
+}
+
+export interface FormFieldConfigListResponse {
+  items: FormFieldConfigItem[]
+}
+
+export interface FormFieldConfigCreatePayload {
+  field_key: string
+  label: string
+  input_type: FormFieldInputType
+  help_text?: string | null
+  required?: boolean | null
+  min_length?: number | null
+  max_length?: number | null
+  regex_pattern?: string | null
+  regex_error_message?: string | null
+  allowed_values?: string[] | null
+}
+
 export type ServiceBaseUrlMode = 'string' | 'json'
 export type ServiceRuleCategory = 'service_type' | 'psga' | 'scope_type' | 'apn_type'
+export type ServiceFieldInputType = FormFieldInputType
 
 export interface ServiceBaseUrlJsonRowPayload {
   key: string
@@ -229,6 +281,7 @@ export interface ServiceIdEntryPayload {
   base_url_uat_input: string
   base_url_live_input: string
   base_url_json_rows?: ServiceBaseUrlJsonRowPayload[]
+  extra_fields?: DynamicFormValues
 }
 
 export interface ServiceIdEntry extends Omit<ServiceIdEntryPayload, 'base_url_test_input' | 'base_url_uat_input' | 'base_url_live_input'> {
@@ -237,6 +290,7 @@ export interface ServiceIdEntry extends Omit<ServiceIdEntryPayload, 'base_url_te
   base_url_test: string
   base_url_uat: string
   base_url_live: string
+  extra_fields: DynamicFormValues
   created_by: number
   updated_by: number
   created_by_name?: string | null
@@ -279,8 +333,14 @@ export interface PaginatedServiceIdRuleOptions {
   items: ServiceIdRuleOption[]
 }
 
+export type ServiceIdFieldConfigItem = FormFieldConfigItem
+export type ServiceIdFieldConfigListResponse = FormFieldConfigListResponse
+export type ServiceIdFieldConfigCreatePayload = FormFieldConfigCreatePayload
+
 export interface RsaLivestreamConfig {
   stream_page_url: string
+  resolved_stream_flv_url?: string | null
+  internal_flv_proxy_url: string
   stream_server: string
   stream_key: string
   placeholder_enabled: boolean
@@ -358,6 +418,23 @@ export interface FeedbackCountsResponse {
   system_feedback: number
   new_tool_suggestion: number
   total: number
+}
+
+export type ToolRuntimeEnv = 'internal' | 'external'
+
+export interface ToolVisibilityConfigResponse {
+  current_runtime_env: ToolRuntimeEnv
+  runtime_env_source: string
+  external_hosts: string[]
+  internal_visible_tool_keys: string[]
+  external_visible_tool_keys: string[]
+  all_tools: ToolInDB[]
+}
+
+export interface ToolVisibilityConfigUpdatePayload {
+  external_hosts?: string[]
+  internal_visible_tool_keys?: string[]
+  external_visible_tool_keys?: string[]
 }
 
 // 权限状态枚举

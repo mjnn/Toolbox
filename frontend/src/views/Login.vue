@@ -48,6 +48,9 @@
         </el-button>
         
         <div class="links">
+          <el-link type="info" @click="showForgotPasswordTip">
+            忘记密码
+          </el-link>
           <el-link type="primary" @click="$router.push('/register')">
             注册新账户
           </el-link>
@@ -60,7 +63,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -106,6 +109,16 @@ const getFriendlyErrorMessage = (error: any): string => {
   
   // 如果没有匹配，返回原始消息
   return message || '登录失败'
+}
+
+const showForgotPasswordTip = async () => {
+  await ElMessageBox.alert(
+    '当前暂不支持邮件找回密码，请联系系统管理员重置密码。拿到新密码后，请尽快登录并在个人资料页修改密码。',
+    '忘记密码',
+    {
+      confirmButtonText: '我知道了'
+    }
+  )
 }
 
 const handleLogin = async () => {
@@ -189,7 +202,7 @@ const handleLogin = async () => {
 
 .links {
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   margin-top: 20px;
 }
 </style>

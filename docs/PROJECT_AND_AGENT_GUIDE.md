@@ -62,7 +62,7 @@ Toolbox_Project/
 
 **关系**：开发机负责“构建与验证”，部署机负责“运行与使用”。部署机不应承担源码构建或安装开发依赖的任务。
 
-**便携打包与 `.env`**：执行 `scripts/build-release.ps1` 时，若存在 **`backend/.env`**，会**自动复制**到 `release/toolbox-portable/.env`（与 exe 同级），便于解压后可直接启动；若本机未配置 `backend/.env`，产物中不含 `.env`，需自行放置。复制内容含密钥，**外传安装包前请脱敏**。详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** Step 2。
+**便携打包与 `.env`**：执行 `scripts/build-release.ps1` 时，默认仅复制 **`backend/.env.example`** 到产物目录（`.env.example`）；默认**不复制** `backend/.env`。部署机需手工生成 `.env` 并填写生产 PostgreSQL（RDS）配置；若确需随包携带 `.env`，可显式使用 `-IncludeBackendEnv`。详见 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** Step 2。
 
 **数据库（开发与部署分场景）**
 
@@ -83,6 +83,12 @@ Toolbox_Project/
 | `backend/app/database.py` | 建表、轻量迁移、种子数据（系统角色、内置 `Tool`、行为目录同步等）。 |
 | `backend/app/models.py` / `schemas.py` | 数据模型与 API 模型。 |
 | `backend/app/services/tool_behavior_catalog.py` | 从 `Tool.behavior_catalog_json` 解析使用记录中的**中文行为名**。 |
+
+**系统级数据库优化能力**（已落地）：
+
+- 管理入口位于 Dashboard 左侧栏「数据库优化」（仅超管可见）。
+- 后端接口统一在 admin 域：`/api/v1/admin/system/db-optimization*`。
+- 该能力不再挂在某个工具的管理子页中。
 
 ### 1.5 工具插件（扩展时的主战场）
 
@@ -189,23 +195,65 @@ powershell -File scripts/run-ci-tool-checks.ps1
 4. 前端：API 方法、`registry.ts`、详情/管理子组件；列表**分页**与 §7.4 对齐。
 5. 跑 `run-ci-tool-checks.ps1` 与 `npm run build`，并按 §10 做手工冒烟。
 
-### 2.4 提示词模板（中文，可直接复制给 Agent）
+### 2.4 通用提示词模板（中文，可直接复制给 Agent）
+
+> 适用于四类任务：**A 宿主能力改造**、**B 新增工具**、**C 修改既有工具**、**D 宿主+工具混合改造**。  
+> 其中 B/C 优先遵循「插件与 registry 扩展，少动宿主」；A/D 允许改宿主，但必须写明影响范围与回归点。
 
 ```text
 你在维护「MOS综合工具箱」仓库。请先阅读并已遵守：
-- docs/TOOL_INTEGRATION_STANDARD.md（尤其 §6 功能路径 / §7 前端与分页 / §8 角色）
+- docs/PROJECT_AND_AGENT_GUIDE.md（仓库总览与 Agent 流程）
+- docs/TOOL_INTEGRATION_STANDARD.md（尤其 §2/§4/§6/§7/§8/§9）
 - .cursor/rules/tool-plugins.mdc
 
-约束：
-1. 工具业务 API 必须落在 /api/v1/tools/{tool_id}/features/... 下，feature 段允许嵌套斜杠，与 backend/main.py 及 contracts/tool.manifest.schema.json 一致。
-2. 处理器内使用 ensure_tool_access（及工具停用时的策略），与现有插件一致。
-3. 前端扩展通过 frontend/src/tools/registry.ts，不要在 ToolDetail.vue / ToolManage.vue 增加 tool.name 硬编码分支。
-4. 列表必须分页；变更后运行：powershell -File scripts/run-ci-tool-checks.ps1，且 npm run build 通过。
+【任务类型】
+请先判断本次属于哪一类（可多选）：
+- A: 宿主能力改造（Host）
+- B: 新增工具（New Tool）
+- C: 修改既有工具（Existing Tool）
+- D: 混合改造（Host + Tool）
 
-本次任务（用中文写清）：<描述需求、验收标准、是否改数据库字段>
+【统一硬约束】
+1) 所有工具业务 API 路径必须满足：
+   /api/v1/tools/{tool_id}/features/{feature}
+   其中 feature 允许子路径（[a-zA-Z0-9_/-]+），并与 backend/main.py、manifest、行为目录保持同源。
+2) 业务处理器需使用 ensure_tool_access（及工具停用策略），与现有插件保持一致。
+3) 前端工具扩展优先通过 frontend/src/tools/registry.ts 完成；禁止在 ToolDetail.vue / ToolManage.vue 增加 tool.name 硬编码分支。
+4) 所有列表必须分页（后端 total/items + 前端分页控件）；筛选变化后重置到第一页。
+5) 所有用户可见文案与错误提示必须中文（协议字段名/标识符除外）。
+
+【当任务包含 A（宿主能力改造）时，额外要求】
+6) 必须先给出最小改动面：涉及哪些宿主文件（如 main.py、api.py、tools.py、admin.py、ToolManage.vue、ToolDetail.vue、router、Dashboard）。
+7) 必须说明不改插件能否完成；若不能，列出必须联动的插件/registry 变更点。
+8) 必须给出回归清单：权限边界、通知跳转、审计日志、管理页通用 Tab、角色可见性、分页与 URL query 状态恢复。
+
+【当任务包含 B/C（工具改造）时，额外要求】
+9) 优先改：
+   - backend/app/tools/plugins/<tool_folder>/（routes.py + tool.manifest.json）
+   - frontend/src/tools/registry.ts
+   - 对应工具前端面板/管理 Tab 组件
+   - contracts/tool.manifest.schema.json（仅当契约必须扩展）
+10) 同步更新 behavior_catalog（manifest 与 Tool.behavior_catalog_json）保证使用记录中文行为名准确。
+
+【输出要求】
+请按以下结构输出并执行：
+1. 任务归类（A/B/C/D）与改动边界
+2. 实施计划（按文件分组）
+3. 代码修改（直接落地）
+4. 验证结果（至少包含）
+   - powershell -File scripts/run-ci-tool-checks.ps1
+   - frontend 下 npm run build
+5. 风险与回滚点（若改宿主必须写）
+
+【本次任务输入（由我填写）】
+- 目标：
+- 验收标准：
+- 是否允许改数据库字段/迁移：
+- 是否允许改宿主能力：
+- 指定不允许改动的文件：
 ```
 
-英文骨架可与规范文档 **§9** 模板组合使用（二者已对齐同一套路径与字符集约定）。
+英文骨架可与规范文档 **§9** 模板组合使用；两者共享同一套路径、角色与行为目录约定。
 
 ### 2.5 新工具的标准清单（Checklist）
 
@@ -248,6 +296,7 @@ powershell -File scripts/run-ci-tool-checks.ps1
 | `ref/` 说明 | `ref/README.md` |
 | 后端环境变量模板 | `backend/.env.example`（复制为 `backend/.env`） |
 | Git 远程说明 | `docs/REMOTE.md`（GitHub 地址与 `git push` 常用命令） |
+| 数据库优化与性能验收 | `docs/PERF_AND_DB_OPTIMIZATION_RUNBOOK.md` |
 
 ---
 

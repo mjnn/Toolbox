@@ -63,11 +63,14 @@ def default_behavior_catalogs() -> dict[str, str]:
         {"key": "mos-manage/vehicle-rules/bulk-import", "label": "MOS 管理：车辆规则批量导入"},
         {"key": "mos-manage/vehicle-rules", "label": "MOS 管理：车辆规则"},
         {"key": "mos-manage/runtime-credentials", "label": "MOS 管理：运行环境凭据"},
+        {"key": "mos-manage/db-optimization", "label": "MOS 管理：数据库优化配置"},
+        {"key": "mos-manage/db-optimization/ping", "label": "MOS 管理：数据库连通性检测"},
         {"key": "mos-manage/change-logs", "label": "MOS 管理：配置变更记录"},
     ]
     rsa_livestream = [
         {"key": "livestream/config", "label": "RSA Token 直播配置查看"},
         {"key": "livestream/manage-config", "label": "RSA Token 直播配置管理"},
+        {"key": "livestream/flv-proxy", "label": "RSA Token 直播内网转发播放"},
     ]
     return {
         "service-id-registry": json.dumps(service_id, ensure_ascii=False),

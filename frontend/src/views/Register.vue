@@ -3,7 +3,7 @@
     <div class="register-card">
       <div class="logo">
         <h1>注册账户</h1>
-        <p>提交后需管理员审核通过方可登录</p>
+        <p>可选择仅注册，或注册并申请指定工具</p>
       </div>
       
       <el-form
@@ -46,6 +46,48 @@
             placeholder="部门"
             size="large"
             :prefix-icon="OfficeBuilding"
+          />
+        </el-form-item>
+
+        <el-form-item prop="registrationMode" label="注册方式">
+          <el-radio-group v-model="formData.registrationMode">
+            <el-radio value="register_only">仅注册</el-radio>
+            <el-radio value="register_with_tool">注册并申请工具</el-radio>
+          </el-radio-group>
+        </el-form-item>
+
+        <el-form-item
+          v-if="formData.registrationMode === 'register_with_tool'"
+          prop="requestedToolId"
+          label="目标工具"
+        >
+          <el-select
+            v-model="formData.requestedToolId"
+            placeholder="请选择要申请的工具"
+            filterable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="tool in toolOptions"
+              :key="tool.id"
+              :label="buildToolOptionLabel(tool)"
+              :value="tool.id"
+            />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item
+          v-if="formData.registrationMode === 'register_with_tool'"
+          prop="requestedToolReason"
+          label="申请理由"
+        >
+          <el-input
+            v-model="formData.requestedToolReason"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="请说明您希望使用该工具的业务场景"
           />
         </el-form-item>
         
@@ -92,21 +134,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { User, Lock, Message, OfficeBuilding } from '@element-plus/icons-vue'
 import { authApi } from '@/api/auth'
+import { toolsApi } from '@/api/tools'
+import type { ToolInDB } from '@/api/types'
+import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const toolOptions = ref<ToolInDB[]>([])
 
 const formData = reactive({
   username: '',
   email: '',
   fullName: '',
   department: '',
+  registrationMode: 'register_only',
+  requestedToolId: null as number | null,
+  requestedToolReason: '',
   password: '',
   confirmPassword: ''
 })
@@ -136,6 +185,28 @@ const formRules: FormRules = {
   department: [
     { required: true, message: '请输入部门', trigger: 'blur' },
     { min: 1, max: 100, message: '部门长度 1～100 个字符', trigger: 'blur' }
+  ],
+  registrationMode: [{ required: true, message: '请选择注册方式', trigger: 'change' }],
+  requestedToolId: [
+    {
+      validator: (_rule, value, callback) => {
+        if (formData.registrationMode !== 'register_with_tool') return callback()
+        if (!value) return callback(new Error('请选择目标工具'))
+        callback()
+      },
+      trigger: 'change'
+    }
+  ],
+  requestedToolReason: [
+    {
+      validator: (_rule, value, callback) => {
+        if (formData.registrationMode !== 'register_with_tool') return callback()
+        if (!String(value || '').trim()) return callback(new Error('请填写申请理由'))
+        if (String(value || '').trim().length < 5) return callback(new Error('申请理由至少 5 个字符'))
+        callback()
+      },
+      trigger: 'blur'
+    }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -169,6 +240,12 @@ const getFriendlyErrorMessage = (error: any): string => {
   return message || '注册失败'
 }
 
+const buildToolOptionLabel = (tool: ToolInDB): string => {
+  const displayName = resolveToolDisplayName(tool.name, tool.display_name)
+  const desc = resolveToolDisplayDescription(tool.description, tool.display_description)
+  return `${displayName}（${desc}）`
+}
+
 const handleRegister = async () => {
   if (!formRef.value) return
   
@@ -181,7 +258,14 @@ const handleRegister = async () => {
       email: formData.email,
       password: formData.password,
       full_name: formData.fullName.trim(),
-      department: formData.department.trim()
+      department: formData.department.trim(),
+      requested_tool_id:
+        formData.registrationMode === 'register_with_tool' ? formData.requestedToolId ?? undefined : undefined,
+      requested_tool_reason:
+        formData.registrationMode === 'register_with_tool'
+          ? formData.requestedToolReason.trim()
+          : undefined,
+      registration_entry: 'direct_register' as const
     }
     
     const res = await authApi.register(registerData)
@@ -196,6 +280,19 @@ const handleRegister = async () => {
     loading.value = false
   }
 }
+
+const loadToolsForRegistration = async () => {
+  try {
+    const rows = await toolsApi.getTools(0, 500)
+    toolOptions.value = rows.filter((tool) => tool.is_active)
+  } catch {
+    toolOptions.value = []
+  }
+}
+
+onMounted(() => {
+  loadToolsForRegistration()
+})
 </script>
 
 <style scoped>

@@ -1,11 +1,15 @@
 import csv
 import io
 import json
+import os
 import re
+import time
 from typing import List, Literal
+from pathlib import Path
+from urllib.parse import urlparse
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from sqlalchemy import func, or_
@@ -20,6 +24,7 @@ from app.models import (
     PermissionStatus,
     Notification,
     ToolOwner,
+    ToolDisplayConfig,
     Role,
     UserRole,
     APIAccessLog,
@@ -30,6 +35,7 @@ from app.models import (
 from app.schemas import (
     AdminUserImportIssue,
     AdminUserImportResponse,
+    AdminResetPasswordRequest,
     PermissionWithDetails,
     PermissionUpdate,
     SuccessResponse,
@@ -52,9 +58,19 @@ from app.schemas import (
     ToolAnnouncementInDB,
     ToolAnnouncementUpdate,
     PaginatedToolAnnouncements,
+    ToolDisplayConfigUpdate,
+    MosDbOptimizationUpdateRequest,
+    ToolVisibilityConfigUpdate,
+    ToolVisibilityConfigResponse,
 )
+from app.core.config_simple import BACKEND_ROOT, DATABASE_URL
 from app.api.v1.users import get_current_active_user
 from app.api.v1.auth import get_password_hash
+from app.core.tool_visibility import (
+    load_tool_visibility_config,
+    resolve_runtime_environment,
+    save_tool_visibility_config,
+)
 from app.services.user_deletion import delete_user_and_related
 from app.services.tool_behavior_catalog import resolve_behavior_label_from_tool
 from datetime import datetime, timezone
@@ -65,6 +81,7 @@ router = APIRouter()
 _TZ_CN = ZoneInfo("Asia/Shanghai")
 _ANNOUNCEMENT_PRIORITIES = {"urgent", "notice", "reminder"}
 _GLOBAL_ANNOUNCEMENT_TOOL_NAME = "mos-integration-toolbox"
+_DB_OPTIMIZATION_FILE = Path(BACKEND_ROOT) / "runtime" / "db_optimization.json"
 
 
 def _format_ts_cst8(dt: datetime | None) -> str:
@@ -169,6 +186,104 @@ def _normalize_excel_header(value: object) -> str:
     return re.sub(r"[\s_\-]+", "", text)
 
 
+def _mask_database_url(raw: str) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    parsed = urlparse(text)
+    if parsed.password:
+        return text.replace(f":{parsed.password}@", ":***@")
+    return text
+
+
+def _is_remote_database_url(raw: str) -> bool:
+    parsed = urlparse((raw or "").strip())
+    host = (parsed.hostname or "").lower()
+    return bool(host and host not in {"localhost", "127.0.0.1", "::1"})
+
+
+def _load_db_optimization_overrides() -> dict[str, int]:
+    if not _DB_OPTIMIZATION_FILE.exists():
+        return {}
+    try:
+        raw = json.loads(_DB_OPTIMIZATION_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, int] = {}
+    for key in ("pool_size", "max_overflow", "pool_timeout_seconds", "pool_recycle_seconds", "workers", "statement_timeout_ms"):
+        value = raw.get(key)
+        if isinstance(value, int):
+            result[key] = value
+    return result
+
+
+def _save_db_optimization_overrides(data: dict[str, int]) -> None:
+    _DB_OPTIMIZATION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _DB_OPTIMIZATION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _upsert_env_lines(env_path: Path, updates: dict[str, int]) -> None:
+    rows: list[str] = []
+    if env_path.exists():
+        rows = env_path.read_text(encoding="utf-8").splitlines()
+    for key, value in updates.items():
+        line = f"{key}={value}"
+        found = False
+        for idx, existing in enumerate(rows):
+            if existing.strip().startswith(f"{key}="):
+                rows[idx] = line
+                found = True
+                break
+        if not found:
+            rows.append(line)
+    payload = "\n".join(rows).strip()
+    env_path.write_text(payload + "\n", encoding="utf-8")
+
+
+def _split_hosts(raw_hosts: list[str] | None) -> list[str]:
+    if not raw_hosts:
+        return []
+    out: list[str] = []
+    for item in raw_hosts:
+        for token in re.split(r"[,\n;\s]+", str(item or "").strip()):
+            value = token.strip().lower()
+            if value:
+                out.append(value)
+    return sorted({h for h in out if h})
+
+
+def _extract_request_host(request: Request) -> str | None:
+    return (
+        request.headers.get("X-Forwarded-Host")
+        or request.headers.get("Host")
+        or request.url.hostname
+    )
+
+
+def _load_all_tools_sorted(db: Session) -> list[Tool]:
+    return db.exec(select(Tool).order_by(Tool.id)).all()
+
+
+def _tool_visibility_response(
+    db: Session,
+    request: Request,
+    cfg: dict,
+) -> ToolVisibilityConfigResponse:
+    current_host = _extract_request_host(request)
+    runtime_env, source = resolve_runtime_environment(current_host)
+    all_tools = [_build_tool_schema(db, tool) for tool in _load_all_tools_sorted(db)]
+    return ToolVisibilityConfigResponse(
+        current_runtime_env=runtime_env,  # type: ignore[arg-type]
+        runtime_env_source=source,
+        external_hosts=[str(v) for v in cfg.get("external_hosts", [])],
+        internal_visible_tool_keys=[str(v) for v in cfg.get("internal_visible_tool_keys", [])],
+        external_visible_tool_keys=[str(v) for v in cfg.get("external_visible_tool_keys", [])],
+        all_tools=all_tools,
+    )
+
+
 def _sanitize_username(raw: str) -> str:
     text = re.sub(r"[^a-zA-Z0-9_.-]+", "-", raw.strip().lower()).strip("-._")
     return text[:50] if text else "user"
@@ -206,6 +321,22 @@ def ensure_permission_reviewer(db: Session, current_user: User, tool_id: int):
     if user_is_tool_owner(db, current_user.id, tool_id):
         return
     raise HTTPException(status_code=403, detail="仅工具负责人可审核该权限")
+
+
+def _build_tool_schema(db: Session, tool: Tool) -> ToolInDB:
+    cfg = db.exec(select(ToolDisplayConfig).where(ToolDisplayConfig.tool_id == tool.id)).first()
+    return ToolInDB(
+        id=tool.id,
+        name=tool.name,
+        description=tool.description,
+        display_name=cfg.display_name if cfg else None,
+        display_description=cfg.display_description if cfg else None,
+        version=tool.version,
+        spec_revision=tool.spec_revision,
+        behavior_catalog_json=tool.behavior_catalog_json,
+        is_active=tool.is_active,
+        created_at=tool.created_at,
+    )
 
 
 def build_access_log_item(db: Session, access_log: APIAccessLog) -> APIAccessLogWithUser:
@@ -362,6 +493,158 @@ async def update_global_announcement(
     return _build_announcement_schema(row)
 
 
+@router.get("/system/db-optimization", response_model=dict)
+async def get_system_db_optimization(
+    current_user: User = Depends(get_current_active_user),
+):
+    ensure_admin(current_user)
+    overrides = _load_db_optimization_overrides()
+    env_current = {
+        "SQLALCHEMY_POOL_SIZE": int(os.getenv("SQLALCHEMY_POOL_SIZE", "4")),
+        "SQLALCHEMY_MAX_OVERFLOW": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2")),
+        "SQLALCHEMY_POOL_TIMEOUT": int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30")),
+        "SQLALCHEMY_POOL_RECYCLE": int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800")),
+        "TOOLBOX_WORKERS": int(os.getenv("TOOLBOX_WORKERS", "2")),
+        "SQLALCHEMY_STATEMENT_TIMEOUT_MS": int(os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000")),
+    }
+    recommendation = {
+        "pool_size": max(4, env_current["SQLALCHEMY_POOL_SIZE"]),
+        "max_overflow": max(2, env_current["SQLALCHEMY_MAX_OVERFLOW"]),
+        "pool_timeout_seconds": max(30, env_current["SQLALCHEMY_POOL_TIMEOUT"]),
+        "pool_recycle_seconds": max(1800, env_current["SQLALCHEMY_POOL_RECYCLE"]),
+        "workers": max(2, env_current["TOOLBOX_WORKERS"]),
+        "statement_timeout_ms": max(15000, env_current["SQLALCHEMY_STATEMENT_TIMEOUT_MS"]),
+    }
+    return {
+        "database_url_masked": _mask_database_url(DATABASE_URL),
+        "is_remote_database": _is_remote_database_url(DATABASE_URL),
+        "current_env": env_current,
+        "saved_overrides": overrides,
+        "recommendation": recommendation,
+        "requires_restart": True,
+        "note": "保存后将写入 backend/.env，需重启后端进程生效。",
+    }
+
+
+@router.put("/system/db-optimization", response_model=dict)
+async def update_system_db_optimization(
+    body: MosDbOptimizationUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+):
+    ensure_admin(current_user)
+    updates: dict[str, int] = {}
+    if body.pool_size is not None:
+        updates["pool_size"] = body.pool_size
+    if body.max_overflow is not None:
+        updates["max_overflow"] = body.max_overflow
+    if body.pool_timeout_seconds is not None:
+        updates["pool_timeout_seconds"] = body.pool_timeout_seconds
+    if body.pool_recycle_seconds is not None:
+        updates["pool_recycle_seconds"] = body.pool_recycle_seconds
+    if body.workers is not None:
+        updates["workers"] = body.workers
+    if body.statement_timeout_ms is not None:
+        updates["statement_timeout_ms"] = body.statement_timeout_ms
+    if not updates:
+        raise HTTPException(status_code=400, detail="至少提交一项数据库优化参数")
+
+    saved = _load_db_optimization_overrides()
+    saved.update(updates)
+    _save_db_optimization_overrides(saved)
+
+    if body.apply_to_env:
+        effective = {
+            "pool_size": int(saved.get("pool_size", os.getenv("SQLALCHEMY_POOL_SIZE", "4"))),
+            "max_overflow": int(saved.get("max_overflow", os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))),
+            "pool_timeout_seconds": int(saved.get("pool_timeout_seconds", os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30"))),
+            "pool_recycle_seconds": int(saved.get("pool_recycle_seconds", os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800"))),
+            "workers": int(saved.get("workers", os.getenv("TOOLBOX_WORKERS", "2"))),
+            "statement_timeout_ms": int(saved.get("statement_timeout_ms", os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000"))),
+        }
+        env_updates = {
+            "SQLALCHEMY_POOL_SIZE": effective["pool_size"],
+            "SQLALCHEMY_MAX_OVERFLOW": effective["max_overflow"],
+            "SQLALCHEMY_POOL_TIMEOUT": effective["pool_timeout_seconds"],
+            "SQLALCHEMY_POOL_RECYCLE": effective["pool_recycle_seconds"],
+            "TOOLBOX_WORKERS": effective["workers"],
+            "SQLALCHEMY_STATEMENT_TIMEOUT_MS": effective["statement_timeout_ms"],
+        }
+        _upsert_env_lines(Path(BACKEND_ROOT) / ".env", env_updates)
+
+    return {
+        "saved_overrides": saved,
+        "applied_to_env": body.apply_to_env,
+        "requires_restart": True,
+    }
+
+
+@router.post("/system/db-optimization/ping", response_model=dict)
+async def ping_system_db_optimization(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    ensure_admin(current_user)
+    started = time.perf_counter()
+    db.exec(select(1)).first()
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    return {"elapsed_ms": elapsed_ms}
+
+
+@router.get("/system/tool-visibility", response_model=ToolVisibilityConfigResponse)
+async def get_system_tool_visibility(
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    ensure_admin(current_user)
+    cfg = load_tool_visibility_config()
+    return _tool_visibility_response(db, request, cfg)
+
+
+@router.put("/system/tool-visibility", response_model=ToolVisibilityConfigResponse)
+async def update_system_tool_visibility(
+    payload: ToolVisibilityConfigUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    ensure_admin(current_user)
+    cfg = load_tool_visibility_config()
+
+    existing_names = {str(t.name).strip() for t in _load_all_tools_sorted(db)}
+    if payload.internal_visible_tool_keys is not None:
+        unknown = sorted(
+            {k for k in payload.internal_visible_tool_keys if str(k).strip() not in existing_names}
+        )
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"内网可见工具不存在：{', '.join(unknown)}")
+        cfg["internal_visible_tool_keys"] = sorted(
+            {str(k).strip() for k in payload.internal_visible_tool_keys if str(k).strip()}
+        )
+
+    if payload.external_visible_tool_keys is not None:
+        unknown = sorted(
+            {k for k in payload.external_visible_tool_keys if str(k).strip() not in existing_names}
+        )
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"外网可见工具不存在：{', '.join(unknown)}")
+        cfg["external_visible_tool_keys"] = sorted(
+            {str(k).strip() for k in payload.external_visible_tool_keys if str(k).strip()}
+        )
+
+    if payload.external_hosts is not None:
+        cfg["external_hosts"] = _split_hosts(payload.external_hosts)
+        if not cfg["external_hosts"]:
+            cfg["external_hosts"] = ["47.116.180.173"]
+
+    saved = save_tool_visibility_config(
+        external_hosts=cfg.get("external_hosts", []),
+        internal_visible_tool_keys=cfg.get("internal_visible_tool_keys", []),
+        external_visible_tool_keys=cfg.get("external_visible_tool_keys", []),
+    )
+    return _tool_visibility_response(db, request, saved)
+
+
 @router.get("/users/{user_id}/roles", response_model=UserRolesResponse)
 async def get_user_roles(
     user_id: int,
@@ -396,7 +679,48 @@ async def approve_user_registration(
     db.add(u)
     db.commit()
     db.refresh(u)
+    db.add(
+        Notification(
+            user_id=u.id,
+            title="注册审核已通过",
+            message="您的账号已通过审核，现在可以正常登录并使用系统。",
+            notification_type="system",
+            related_id=u.id,
+        )
+    )
+    db.commit()
     return UserInDB.model_validate(u)
+
+
+@router.post("/users/{user_id}/reset-password", response_model=SuccessResponse)
+async def reset_user_password_by_admin(
+    user_id: int,
+    payload: AdminResetPasswordRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    """管理员重置指定用户密码（用于忘记密码场景）。"""
+    ensure_admin(current_user)
+    u = db.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    if not u.is_active:
+        raise HTTPException(status_code=400, detail="用户已禁用，无法重置密码")
+
+    u.hashed_password = get_password_hash(payload.new_password)
+    u.updated_at = datetime.utcnow()
+    db.add(u)
+    db.add(
+        Notification(
+            user_id=u.id,
+            title="账号密码已被管理员重置",
+            message="您的账号密码已被管理员重置，请联系管理员获取新密码并尽快在个人资料页修改。",
+            notification_type="system",
+            related_id=u.id,
+        )
+    )
+    db.commit()
+    return SuccessResponse(message=f"用户「{u.username}」密码已重置")
 
 
 @router.post("/users/import-excel", response_model=AdminUserImportResponse)
@@ -752,7 +1076,7 @@ async def update_tool_status(
     ensure_permission_reviewer(db, current_user, tool_id)
 
     if tool.is_active == body.is_active:
-        return tool
+        return _build_tool_schema(db, tool)
 
     tool.is_active = body.is_active
     db.add(tool)
@@ -771,7 +1095,52 @@ async def update_tool_status(
             )
         )
     db.commit()
-    return tool
+    return _build_tool_schema(db, tool)
+
+
+@router.put("/tools/{tool_id}/display-config", response_model=ToolInDB)
+async def update_tool_display_config(
+    tool_id: int,
+    body: ToolDisplayConfigUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = db.get(Tool, tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="工具不存在")
+    ensure_permission_reviewer(db, current_user, tool_id)
+
+    display_name = body.display_name.strip() if body.display_name is not None else None
+    display_description = body.display_description.strip() if body.display_description is not None else None
+    if display_name == "":
+        display_name = None
+    if display_description == "":
+        display_description = None
+
+    row = db.exec(select(ToolDisplayConfig).where(ToolDisplayConfig.tool_id == tool_id)).first()
+    if not display_name and not display_description:
+        if row:
+            db.delete(row)
+            db.commit()
+        return _build_tool_schema(db, tool)
+
+    now = datetime.utcnow()
+    if not row:
+        row = ToolDisplayConfig(
+            tool_id=tool_id,
+            display_name=display_name,
+            display_description=display_description,
+            updated_by=current_user.id,
+            updated_at=now,
+        )
+    else:
+        row.display_name = display_name
+        row.display_description = display_description
+        row.updated_by = current_user.id
+        row.updated_at = now
+    db.add(row)
+    db.commit()
+    return _build_tool_schema(db, tool)
 
 
 @router.get("/tools/{tool_id}/usage-logs", response_model=PaginatedAPIAccessLogs)

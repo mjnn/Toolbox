@@ -1,0 +1,30 @@
+---
+description: 字段配置能力复用（文件范围增强）
+globs:
+  - backend/app/tools/plugins/**/*.py
+  - backend/app/services/**/*.py
+  - frontend/src/components/tool-detail/**/*.vue
+  - frontend/src/components/tool-manage/**/*.vue
+  - frontend/src/components/form-config/**/*.vue
+  - frontend/src/api/types.ts
+  - frontend/src/api/tools.ts
+alwaysApply: false
+---
+
+# 字段配置能力复用（文件范围增强）
+
+当正在编辑以上文件且需求涉及字段配置/动态表单时，优先按以下模式实现：
+
+- 后端：`routes.py` 仅做编排与权限，校验与字段存储细节下沉到服务层。
+- 服务层：工具薄封装层调用 `backend/app/services/dynamic_form_fields.py` 通用核心。
+- 前端：优先复用
+  - `frontend/src/components/form-config/DynamicFieldInputs.vue`
+  - `frontend/src/components/form-config/FieldConfigManagerTable.vue`
+- 类型：优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
+
+## 反例（不要做）
+
+- 在 `routes.py` 重写一整套字段校验和动态值持久化逻辑。
+- 在工具页面复制粘贴动态字段渲染模板。
+- 在管理页复制粘贴字段配置表格模板。
+- 新增平行字段类型替代 `FormField*` / `DynamicFormValues`。

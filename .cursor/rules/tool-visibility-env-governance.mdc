@@ -1,0 +1,21 @@
+---
+description: 内外网环境识别与工具可见性治理约定
+alwaysApply: true
+---
+
+# 内外网工具可见性治理
+
+- 当需求涉及“内网/外网展示不同工具”时，优先使用系统能力，不要在前端写硬编码过滤。
+- 环境识别优先级：
+  1. `TOOLBOX_DEPLOY_ENV`（`internal`/`external`）强制指定
+  2. 请求 Host 命中 `external_hosts`（默认包含 `47.116.180.173`）判定为外网
+  3. 其余默认内网
+- 可见性配置统一走 Admin API：
+  - `GET /api/v1/admin/system/tool-visibility`
+  - `PUT /api/v1/admin/system/tool-visibility`
+- 外网发布默认值：
+  - `external_hosts`: `47.116.180.173`
+  - `external_visible_tool_keys`: `service-id-registry`
+- 验证时必须同时检查：
+  - 普通请求 Host 下工具列表
+  - `Host: 47.116.180.173` 下工具列表（外网视角）

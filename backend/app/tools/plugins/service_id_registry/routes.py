@@ -5,7 +5,6 @@ import json
 import re
 from urllib.parse import quote
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -15,16 +14,13 @@ from sqlmodel import Session, select
 from app.database import get_session
 from app.models import (
     Tool,
-    ToolOwner,
     User,
-    UserToolPermission,
     ServiceIdRegistryEntry,
     ServiceIdRuleOption,
     ServiceRuleCategory,
     ServiceBaseUrlMode,
 )
 from app.schemas import (
-    ToolInDB,
     SuccessResponse,
     ServiceIdEntryCreate,
     ServiceIdEntryUpdate,
@@ -37,6 +33,11 @@ from app.schemas import (
     ServiceIdRuleOptionGroupResponse,
     PaginatedServiceIdRuleOptions,
     ServiceBaseUrlJsonRow,
+    ServiceIdFieldConfigItem,
+    ServiceIdFieldConfigListResponse,
+    ServiceIdFieldConfigUpdateRequest,
+    ServiceIdFieldConfigCreateRequest,
+    ServiceIdFieldConfigDeleteRequest,
 )
 from app.api.v1.users import get_current_active_user
 from app.api.v1.tools_common import (
@@ -46,6 +47,7 @@ from app.api.v1.tools_common import (
     can_manage_all_records,
     ensure_manage_permission,
 )
+from app.services import service_id_dynamic_fields as dynamic_fields
 
 router = APIRouter()
 
@@ -60,11 +62,6 @@ def _ensure_tool_feature_access(db: Session, current_user: User, tool: Tool) -> 
 
 def _is_ascii_text(value: str) -> bool:
     return all(ord(ch) < 128 for ch in value)
-
-
-def _validate_char_length(value: str, limit: int, field_name: str) -> None:
-    if len(value.strip()) > limit:
-        raise HTTPException(status_code=400, detail=f"{field_name} 长度不能超过 {limit}")
 
 
 def _validate_base_url_inputs(
@@ -193,15 +190,21 @@ def _build_rule_option_response(
     )
 
 
+def _validate_custom_field_constraints(
+    db: Session,
+    tool_id: int,
+    payload: ServiceIdEntryCreate | ServiceIdEntryUpdate,
+) -> dict[str, object]:
+    return dynamic_fields.validate_custom_field_constraints(db, tool_id, payload)
+
+
 def _validate_entry_payload(
     db: Session,
     tool_id: int,
     payload: ServiceIdEntryCreate | ServiceIdEntryUpdate,
     existing_id: int | None = None,
-) -> tuple[str | None, str, str, str]:
-    _validate_char_length(payload.business_function, 20, "业务功能")
-    _validate_char_length(payload.business_description, 50, "业务功能描述")
-    _validate_char_length(payload.access_link_desc, 20, "访问链路说明")
+) -> tuple[str | None, str, str, str, dict[str, object]]:
+    normalized_extra_fields = _validate_custom_field_constraints(db, tool_id, payload)
     if not _PACKAGE_NAME_PATTERN.match(payload.package_name.strip()):
         raise HTTPException(
             status_code=400,
@@ -228,7 +231,7 @@ def _validate_entry_payload(
     if exists and exists.id != existing_id:
         raise HTTPException(status_code=400, detail="服务 ID 已存在")
 
-    return _validate_base_url_inputs(
+    json_key, base_test, base_uat, base_live = _validate_base_url_inputs(
         payload.base_url_mode,
         payload.base_url_json_key,
         payload.base_url_test_input,
@@ -236,12 +239,14 @@ def _validate_entry_payload(
         payload.base_url_live_input,
         payload.base_url_json_rows,
     )
+    return json_key, base_test, base_uat, base_live, normalized_extra_fields
 
 def _build_entry_response(db: Session, entry: ServiceIdRegistryEntry) -> ServiceIdEntryInDB:
     created_user = db.get(User, entry.created_by)
     updated_user = db.get(User, entry.updated_by)
     raw_psga_values = [s.strip() for s in entry.psga_availability.split(",") if s.strip()]
     psga_value = raw_psga_values[0] if raw_psga_values else ""
+    extra_fields = dynamic_fields.load_entry_custom_fields(db, entry.id)
     return ServiceIdEntryInDB(
         id=entry.id,
         tool_id=entry.tool_id,
@@ -259,6 +264,7 @@ def _build_entry_response(db: Session, entry: ServiceIdRegistryEntry) -> Service
         base_url_test=entry.base_url_test,
         base_url_uat=entry.base_url_uat,
         base_url_live=entry.base_url_live,
+        extra_fields=extra_fields,
         created_by=entry.created_by,
         updated_by=entry.updated_by,
         created_by_name=created_user.username if created_user else None,
@@ -313,7 +319,7 @@ async def create_service_id_entry(
     ensure_service_id_registry_tool(tool)
     _ensure_tool_feature_access(db, current_user, tool)
 
-    json_key, base_test, base_uat, base_live = _validate_entry_payload(db, tool_id, body)
+    json_key, base_test, base_uat, base_live, normalized_extra_fields = _validate_entry_payload(db, tool_id, body)
     now = datetime.utcnow()
     row = ServiceIdRegistryEntry(
         tool_id=tool_id,
@@ -339,6 +345,8 @@ async def create_service_id_entry(
     db.add(row)
     db.commit()
     db.refresh(row)
+    dynamic_fields.save_entry_custom_fields(db, row.id, current_user.id, normalized_extra_fields)
+    db.commit()
     return _build_entry_response(db, row)
 
 
@@ -361,7 +369,9 @@ async def update_service_id_entry(
     if not can_manage_all and row.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="仅可编辑自己提交的记录")
 
-    json_key, base_test, base_uat, base_live = _validate_entry_payload(db, tool_id, body, existing_id=row.id)
+    json_key, base_test, base_uat, base_live, normalized_extra_fields = _validate_entry_payload(
+        db, tool_id, body, existing_id=row.id
+    )
     row.business_function = body.business_function.strip()
     row.business_description = body.business_description.strip()
     row.service_id = body.service_id.strip()
@@ -381,6 +391,8 @@ async def update_service_id_entry(
     db.add(row)
     db.commit()
     db.refresh(row)
+    dynamic_fields.save_entry_custom_fields(db, row.id, current_user.id, normalized_extra_fields)
+    db.commit()
     return _build_entry_response(db, row)
 
 
@@ -403,6 +415,7 @@ async def delete_service_id_entry(
     if not can_manage_all and row.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="仅可删除自己提交的记录")
 
+    dynamic_fields.delete_entry_custom_fields_by_entry(db, row.id)
     db.delete(row)
     db.commit()
     return SuccessResponse(message="已删除记录")
@@ -578,6 +591,66 @@ async def delete_service_id_rule_option(
     db.delete(row)
     db.commit()
     return SuccessResponse(message="已删除规则值")
+
+
+@router.get("/{tool_id}/features/service-id-field-config", response_model=ServiceIdFieldConfigListResponse)
+async def list_service_id_field_configs(
+    tool_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    items = dynamic_fields.list_field_config_items(db, tool_id)
+    return ServiceIdFieldConfigListResponse(items=items)
+
+
+@router.post("/{tool_id}/features/service-id-field-config", response_model=ServiceIdFieldConfigItem)
+async def create_service_id_field_config(
+    tool_id: int,
+    body: ServiceIdFieldConfigCreateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+
+    return dynamic_fields.create_field_config(db, tool_id, body, current_user.id)
+
+
+@router.delete("/{tool_id}/features/service-id-field-config", response_model=SuccessResponse)
+async def delete_service_id_field_config(
+    tool_id: int,
+    body: ServiceIdFieldConfigDeleteRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+
+    dynamic_fields.delete_field_config(db, tool_id, body.field_key)
+    return SuccessResponse(message="字段已删除")
+
+
+@router.put("/{tool_id}/features/service-id-field-config", response_model=ServiceIdFieldConfigListResponse)
+async def update_service_id_field_configs(
+    tool_id: int,
+    body: ServiceIdFieldConfigUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+
+    dynamic_fields.update_field_configs(db, tool_id, body.items, current_user.id)
+    return await list_service_id_field_configs(tool_id=tool_id, current_user=current_user, db=db)
 
 
 @router.get("/{tool_id}/features/service-id-export")

@@ -1,0 +1,37 @@
+---
+description: MOS 项目核心上下文（结构/边界/入口）
+alwaysApply: true
+---
+
+# MOS 项目核心认知
+
+## 架构边界
+
+- 宿主职责：认证、工具目录、权限审批、管理聚合、审计与通知。
+- 工具职责：在门禁内实现业务 API 与可选前端面板。
+- 默认原则：先插件化扩展，谨慎修改宿主公共逻辑。
+
+## 高频路径
+
+- 后端入口：`backend/main.py`
+- API 聚合：`backend/app/api/v1/api.py`
+- 工具宿主路由：`backend/app/api/v1/tools.py`
+- 权限辅助：`backend/app/api/v1/tools_common.py`
+- 管理接口：`backend/app/api/v1/admin.py`
+- 工具插件：`backend/app/tools/plugins/*`
+- 前端壳：`frontend/src/views/Dashboard.vue`
+- 工具使用页：`frontend/src/views/ToolDetail.vue`
+- 工具管理页：`frontend/src/views/ToolManage.vue`
+- 前端注册表：`frontend/src/tools/registry.ts`
+- 契约：`contracts/tool.manifest.schema.json`
+
+## 强制一致性
+
+- `tool_key`、数据库 `Tool.name`、前端 registry key 必须一致。
+- 路由与 `behavior_catalog` 必须同源更新，保证使用记录行为中文名准确。
+- `ToolManage` 顶层 Tab 顺序：工具专属在前，`general` 在后。
+
+## 验证基线
+
+- 合并前至少通过 `scripts/run-ci-tool-checks.ps1` 与前端构建。
+- 涉及权限、路由、管理页、分页的改动，必须给出可复现手工冒烟路径。

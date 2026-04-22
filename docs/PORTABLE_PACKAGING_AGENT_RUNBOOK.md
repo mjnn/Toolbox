@@ -2,7 +2,7 @@
 title: MOS综合工具箱 — 可移植打包 Agent 作业手册
 description: >-
   面向 Agent 的标准打包流程文档：将项目打包为无需 Python/Node 的 Windows 可运行包，
-  包含一键启动/停止、默认账号初始化、前后端日志，以及验证与排障步骤。
+  包含一键启动/停止、生产 PostgreSQL 配置约束、前后端日志，以及验证与排障步骤。
 version: 1.0
 target: Windows x64
 ---
@@ -15,18 +15,16 @@ target: Windows x64
 
 1. 目标机器无需安装 Python / Node.js。
 2. 提供一键启动与一键停止脚本。
-3. 启动时自动创建/补齐默认账号：
-   - `admin / admin123`（管理员）
-   - `owner / owner123`（功能负责人）
-   - `user / user12345`（普通用户）
-4. 前后端日志明确分离并可追踪：
+3. 启动时**不**自动创建演示账号（`admin/owner/user`）。
+4. 发布包面向部署机直连 PostgreSQL（RDS），不使用 SQLite。
+5. 前后端日志明确分离并可追踪：
    - `logs/backend-runtime.out.log`
    - `logs/backend-runtime.err.log`
    - `logs/backend-access.log`
    - `logs/frontend-access.log`
    - `logs/app.log`
-5. 服务需绑定 `0.0.0.0:3000`，可通过本机局域网 IP 访问（不只环回地址）。
-6. 启动后访问 `http://127.0.0.1:3000/` 与 `http://<LAN-IP>:3000/` 均应返回前端 HTML（`<!DOCTYPE html>`），不是 API fallback JSON。
+6. 服务需绑定 `0.0.0.0:3000`，可通过本机局域网 IP 访问（不只环回地址）。
+7. 启动后访问 `http://127.0.0.1:3000/` 与 `http://<LAN-IP>:3000/` 均应返回前端 HTML（`<!DOCTYPE html>`），不是 API fallback JSON。
 
 ---
 
@@ -42,12 +40,17 @@ target: Windows x64
 - `scripts/portable-stop.ps1`
 - `scripts/portable-stop.cmd`
 - `scripts/PORTABLE_README.md`
+- `scripts/run-perf-k6.ps1`
+- `scripts/run-perf-suite.ps1`
+- `scripts/report-perf-k6.ps1`
+- `perf/k6-api.js`
+- `perf/README.md`
 
 ### 2.2 后端打包入口与运行逻辑
 
 - `backend/run_server.py`（PyInstaller 入口）
 - `backend/main.py`（静态资源加载 + 访问日志 + SPA fallback）
-- `backend/app/database.py`（启动时默认账号初始化）
+- `backend/app/database.py`（启动时仅系统种子与可选首个超管逻辑）
 - `backend/app/core/logging_config.py`（日志配置）
 - `backend/app/tools/plugins/*`（按工具拆分的 feature 路由与 `tool.manifest.json`，随源码一并打进包内，无额外拷贝步骤）
 
@@ -88,7 +91,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 2. 可选 **仅缩短打包机耗时**：`scripts/build-release.ps1 -ParallelPrereqs`（并行执行前端 build 与 pip 两作业，与运行时 worker **无关**）
 3. 用 `PyInstaller` 打包后端（`backend/run_server.py`）
 4. 组装发布目录 `release/toolbox-portable`
-5. **环境文件**：若打包机存在 **`backend/.env`**，会**自动复制**为 **`release/toolbox-portable/.env`**（与 `toolbox-backend.exe` 同级），运行时 `run_server.py` 会从当前工作目录加载该文件；若不存在则产物中无 `.env`，需自行放置或打包前补好 `backend/.env`。**外传压缩包前请检查是否含数据库密码/密钥，必要时脱敏。**
+5. **环境文件**：默认复制 `backend/.env.example` 为发布目录中的 `.env.example`；默认**不复制** `backend/.env`，避免将本机/生产密钥带出。部署机需手工将 `.env.example` 复制为 `.env` 并填写生产 RDS 配置。若确需打包时带入 `.env`，显式使用 `scripts/build-release.ps1 -IncludeBackendEnv`。
+6. **性能验收脚本**：发布目录会同步包含 `scripts/run-perf-k6.ps1`、`scripts/run-perf-suite.ps1`、`scripts/report-perf-k6.ps1` 与 `perf/k6-api.js`，可在部署机直接执行验收。
 
 ### 3.1 运行时 Uvicorn worker 与 PostgreSQL 连接池
 
@@ -118,19 +122,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/st
 成功标志：
 
 - 控制台出现 `Toolbox started successfully.`
-- 打印默认账号信息
+- 打印“Bootstrap demo accounts are disabled ...”
 - 打印 `LAN URL(s)` 列表
 - `http://127.0.0.1:3000/health` 为 200
 
-### Step 4：登录验证（3 个账号）
+### Step 4：登录验证（使用生产账号）
 
-依次验证 `admin/owner/user` 可登录：
+使用你在生产 PostgreSQL（RDS）中的有效账号验证登录，不再验证演示账号：
 
 ```powershell
 $h=@{'Content-Type'='application/x-www-form-urlencoded'}
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/auth/login' -Method Post -Headers $h -Body 'username=admin&password=admin123&grant_type=password'
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/auth/login' -Method Post -Headers $h -Body 'username=owner&password=owner123&grant_type=password'
-Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/auth/login' -Method Post -Headers $h -Body 'username=user&password=user12345&grant_type=password'
+Invoke-RestMethod -Uri 'http://127.0.0.1:3000/api/v1/auth/login' -Method Post -Headers $h -Body 'username=<prod-user>&password=<prod-password>&grant_type=password'
 ```
 
 ### Step 5：静态资源验证（防回归）
@@ -161,6 +163,18 @@ netstat -ano -p tcp | Select-String -Pattern ":3000"
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/stop.ps1"
 ```
+
+### Step 6.1：部署机性能验收（推荐）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "release/toolbox-portable/scripts/run-perf-suite.ps1" -BaseUrl "http://127.0.0.1:3000" -Token "<access_token>" -Label "deploy" -Quick
+```
+
+通过标准参考：
+
+- `http_req_duration p(95) < 1200ms`
+- `http_req_duration p(99) < 2000ms`
+- `http_req_failed rate < 2%`
 
 ---
 
@@ -227,10 +241,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/st
 - [ ] 服务监听地址为 `0.0.0.0:3000`
 - [ ] `frontend dist` 能被根路径 `/` 正确加载
 - [ ] 局域网 IP 访问 `http://<LAN-IP>:3000/` 可打开页面
-- [ ] 三个默认账号可登录
+- [ ] 不存在自动注入的演示账号（`admin/owner/user`）
 - [ ] 五类日志文件均能生成并追加内容
+- [ ] 已在部署机执行性能验收脚本并保存报告（`perf/results/`）
 - [ ] `README.md` 在发布目录内存在
-- [ ] 若需开箱即连数据库：打包前存在 **`backend/.env`**，产物中应有 **`release/toolbox-portable/.env`**
+- [ ] 部署机已配置 `release/toolbox-portable/.env`（来自 `.env.example` 且指向生产 PostgreSQL RDS）
 
 ---
 
@@ -246,10 +261,8 @@ Goals:
 2) One-click start/stop scripts.
 3) Bind to 0.0.0.0 so LAN clients can access.
    - Must print LAN URL(s) at startup.
-4) Bootstrap users on startup:
-   - admin/admin123
-   - owner/owner123
-   - user/user12345
+4) Do NOT bootstrap demo users on startup.
+   - No admin/owner/user demo accounts.
 5) Clear logs:
    - logs/backend-runtime.out.log
    - logs/backend-runtime.err.log
@@ -260,9 +273,9 @@ Goals:
 7) Both localhost and LAN IP URL should be reachable.
 
 Process requirements:
-- Use scripts/build-release.ps1 for packaging (default sequential npm build then pip; optional -ParallelPrereqs only to speed up the build machine). If backend/.env exists, it is copied to release/toolbox-portable/.env next to the exe.
+- Use scripts/build-release.ps1 for packaging (default sequential npm build then pip; optional -ParallelPrereqs only to speed up the build machine). Default behavior copies backend/.env.example only; backend/.env is included only when -IncludeBackendEnv is explicitly set.
 - Verify with release/toolbox-portable/start.ps1 then stop.ps1.
-- Validate all three accounts by calling /api/v1/auth/login.
+- Validate login with a real production account by calling /api/v1/auth/login.
 - Confirm "/" response starts with "<!DOCTYPE html>".
 - Confirm port 3000 listens on 0.0.0.0 (not only 127.0.0.1).
 - If "/" returns JSON fallback, fix frontend dist path resolution in both startup script and backend runtime logic.
@@ -279,7 +292,7 @@ Deliverables:
 ## 7. 变更后快速复打包指令
 
 ```powershell
-# 建议先维护好 backend/.env（含 DATABASE_URL 等），打包时会自动带入 release/toolbox-portable/.env
+# 建议先确认 backend/.env.example 与生产配置字段一致；部署机从 .env.example 生成 .env
 powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/build-release.ps1"
 # Optional: parallel prereqs on build machine only — .\scripts\build-release.ps1 -ParallelPrereqs
 powershell -NoProfile -ExecutionPolicy Bypass -File "release/toolbox-portable/start.ps1"

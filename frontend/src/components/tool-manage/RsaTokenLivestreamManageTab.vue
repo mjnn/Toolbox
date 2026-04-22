@@ -3,7 +3,7 @@
     <el-card shadow="never">
       <template #header>直播与占位配置</template>
       <p class="section-hint">
-        可在此控制直播页是否展示占位提示。开启占位后，工具使用页会隐藏直播画面并显示提示信息。
+        建议填写“部署机转发后的内网直播地址”。开启占位后，工具使用页会隐藏直播画面并显示提示信息。
       </p>
 
       <el-form label-position="top">
@@ -29,8 +29,14 @@
           />
         </el-form-item>
 
-        <el-form-item label="直播页面地址">
-          <el-input v-model="form.stream_page_url" />
+        <el-form-item label="内网直播展示地址（建议为部署机转发地址）">
+          <el-input v-model="form.stream_page_url" placeholder="例如 http://内网IP:端口/players/srs_player.html?... 或 .flv 地址" />
+        </el-form-item>
+        <el-form-item label="系统解析出的 FLV 源地址（只读）">
+          <el-input :model-value="form.resolved_stream_flv_url || '未解析到 FLV 地址'" readonly />
+        </el-form-item>
+        <el-form-item label="系统内网转发地址（只读）">
+          <el-input :model-value="form.internal_flv_proxy_url" readonly />
         </el-form-item>
 
         <el-row :gutter="12">
@@ -70,6 +76,8 @@ const loading = ref(false)
 const saving = ref(false)
 const form = reactive<RsaLivestreamConfig>({
   stream_page_url: '',
+  resolved_stream_flv_url: '',
+  internal_flv_proxy_url: '',
   stream_server: '',
   stream_key: '',
   placeholder_enabled: true,

@@ -12,13 +12,29 @@
       <el-form label-position="top">
         <el-row :gutter="12">
           <el-col :span="12">
-            <el-form-item :label="`业务功能（${form.business_function.length}/20）`">
-              <el-input v-model="form.business_function" maxlength="20" />
+            <el-form-item :label="`业务功能（${form.business_function.length}/${getFieldMaxLength('business_function', 20) || 20}）`">
+              <template #label>
+                <span class="field-label-with-tip">
+                  业务功能（{{ form.business_function.length }}/{{ getFieldMaxLength('business_function', 20) || 20 }}）
+                  <el-tooltip v-if="getFieldHelp('business_function')" :content="getFieldHelp('business_function')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.business_function" :maxlength="getFieldMaxLength('business_function', 20)" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item :label="`业务功能描述（${form.business_description.length}/50）`">
-              <el-input v-model="form.business_description" maxlength="50" />
+            <el-form-item :label="`业务功能描述（${form.business_description.length}/${getFieldMaxLength('business_description', 50) || 50}）`">
+              <template #label>
+                <span class="field-label-with-tip">
+                  业务功能描述（{{ form.business_description.length }}/{{ getFieldMaxLength('business_description', 50) || 50 }}）
+                  <el-tooltip v-if="getFieldHelp('business_description')" :content="getFieldHelp('business_description')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.business_description" :maxlength="getFieldMaxLength('business_description', 50)" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -26,12 +42,28 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="Service ID">
-              <el-input v-model="form.service_id" />
+              <template #label>
+                <span class="field-label-with-tip">
+                  Service ID
+                  <el-tooltip v-if="getFieldHelp('service_id')" :content="getFieldHelp('service_id')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.service_id" :maxlength="getFieldMaxLength('service_id', 200)" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="包名（PackageName，仅英文）">
-              <el-input v-model="form.package_name" />
+              <template #label>
+                <span class="field-label-with-tip">
+                  包名（PackageName，仅英文）
+                  <el-tooltip v-if="getFieldHelp('package_name')" :content="getFieldHelp('package_name')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.package_name" :maxlength="getFieldMaxLength('package_name', 200)" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -39,6 +71,14 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="服务类型（ServiceType）">
+              <template #label>
+                <span class="field-label-with-tip">
+                  服务类型（ServiceType）
+                  <el-tooltip v-if="getFieldHelp('service_type')" :content="getFieldHelp('service_type')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-select v-model="form.service_type" style="width: 100%">
                 <el-option v-for="item in options.service_type" :key="item.id" :label="item.value" :value="item.value" />
               </el-select>
@@ -46,6 +86,14 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="PSGA 可用域（单选）">
+              <template #label>
+                <span class="field-label-with-tip">
+                  PSGA 可用域（单选）
+                  <el-tooltip v-if="getFieldHelp('psga_availability')" :content="getFieldHelp('psga_availability')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-select v-model="form.psga_availability" style="width: 100%">
                 <el-option v-for="item in options.psga" :key="item.id" :label="item.value" :value="item.value" />
               </el-select>
@@ -56,6 +104,14 @@
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="范围类型（ScopeType）">
+              <template #label>
+                <span class="field-label-with-tip">
+                  范围类型（ScopeType）
+                  <el-tooltip v-if="getFieldHelp('scope_type')" :content="getFieldHelp('scope_type')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-select v-model="form.scope_type" style="width: 100%">
                 <el-option v-for="item in options.scope_type" :key="item.id" :label="item.value" :value="item.value" />
               </el-select>
@@ -63,6 +119,14 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="网络类型（APNType）">
+              <template #label>
+                <span class="field-label-with-tip">
+                  网络类型（APNType）
+                  <el-tooltip v-if="getFieldHelp('apn_type')" :content="getFieldHelp('apn_type')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
               <el-select v-model="form.apn_type" style="width: 100%">
                 <el-option v-for="item in options.apn_type" :key="item.id" :label="item.value" :value="item.value" />
               </el-select>
@@ -70,9 +134,23 @@
           </el-col>
         </el-row>
 
-        <el-form-item :label="`访问链路说明（${form.access_link_desc.length}/20）`">
-          <el-input v-model="form.access_link_desc" maxlength="20" />
+        <el-form-item :label="`访问链路说明（${form.access_link_desc.length}/${getFieldMaxLength('access_link_desc', 20) || 20}）`">
+          <template #label>
+            <span class="field-label-with-tip">
+              访问链路说明（{{ form.access_link_desc.length }}/{{ getFieldMaxLength('access_link_desc', 20) || 20 }}）
+              <el-tooltip v-if="getFieldHelp('access_link_desc')" :content="getFieldHelp('access_link_desc')" placement="top">
+                <el-icon><QuestionFilled /></el-icon>
+              </el-tooltip>
+            </span>
+          </template>
+          <el-input v-model="form.access_link_desc" :maxlength="getFieldMaxLength('access_link_desc', 20)" />
         </el-form-item>
+
+        <dynamic-field-inputs
+          :fields="customFieldConfigs"
+          :model-value="(form.extra_fields || {}) as DynamicFormValues"
+          @update:model-value="(value) => { form.extra_fields = value }"
+        />
 
         <el-form-item label="Base URL 填写方式">
           <el-radio-group v-model="form.base_url_mode">
@@ -93,22 +171,54 @@
             <el-row :gutter="12">
               <el-col :span="6">
                 <el-form-item label="Key（仅英文）">
-                  <el-input v-model="row.key" />
+                  <template #label>
+                    <span class="field-label-with-tip">
+                      Key（仅英文）
+                      <el-tooltip v-if="getFieldHelp('base_url_json_key')" :content="getFieldHelp('base_url_json_key')" placement="top">
+                        <el-icon><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-input v-model="row.key" :maxlength="getFieldMaxLength('base_url_json_key', 100)" />
                 </el-form-item>
               </el-col>
               <el-col :span="6">
                 <el-form-item label="测试（Test）">
-                  <el-input v-model="row.test" />
+                  <template #label>
+                    <span class="field-label-with-tip">
+                      测试（Test）
+                      <el-tooltip v-if="getFieldHelp('base_url_test_input')" :content="getFieldHelp('base_url_test_input')" placement="top">
+                        <el-icon><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-input v-model="row.test" :maxlength="getFieldMaxLength('base_url_test_input')" />
                 </el-form-item>
               </el-col>
               <el-col :span="6">
                 <el-form-item label="预发（UAT）">
-                  <el-input v-model="row.uat" />
+                  <template #label>
+                    <span class="field-label-with-tip">
+                      预发（UAT）
+                      <el-tooltip v-if="getFieldHelp('base_url_uat_input')" :content="getFieldHelp('base_url_uat_input')" placement="top">
+                        <el-icon><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-input v-model="row.uat" :maxlength="getFieldMaxLength('base_url_uat_input')" />
                 </el-form-item>
               </el-col>
               <el-col :span="6">
                 <el-form-item label="生产（Live）">
-                  <el-input v-model="row.live" />
+                  <template #label>
+                    <span class="field-label-with-tip">
+                      生产（Live）
+                      <el-tooltip v-if="getFieldHelp('base_url_live_input')" :content="getFieldHelp('base_url_live_input')" placement="top">
+                        <el-icon><QuestionFilled /></el-icon>
+                      </el-tooltip>
+                    </span>
+                  </template>
+                  <el-input v-model="row.live" :maxlength="getFieldMaxLength('base_url_live_input')" />
                 </el-form-item>
               </el-col>
             </el-row>
@@ -120,17 +230,41 @@
         <el-row v-else :gutter="12">
           <el-col :span="8">
             <el-form-item label="测试（Test）">
-              <el-input v-model="form.base_url_test_input" />
+              <template #label>
+                <span class="field-label-with-tip">
+                  测试（Test）
+                  <el-tooltip v-if="getFieldHelp('base_url_test_input')" :content="getFieldHelp('base_url_test_input')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.base_url_test_input" :maxlength="getFieldMaxLength('base_url_test_input')" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="预发（UAT）">
-              <el-input v-model="form.base_url_uat_input" />
+              <template #label>
+                <span class="field-label-with-tip">
+                  预发（UAT）
+                  <el-tooltip v-if="getFieldHelp('base_url_uat_input')" :content="getFieldHelp('base_url_uat_input')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.base_url_uat_input" :maxlength="getFieldMaxLength('base_url_uat_input')" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="生产（Live）">
-              <el-input v-model="form.base_url_live_input" />
+              <template #label>
+                <span class="field-label-with-tip">
+                  生产（Live）
+                  <el-tooltip v-if="getFieldHelp('base_url_live_input')" :content="getFieldHelp('base_url_live_input')" placement="top">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </el-tooltip>
+                </span>
+              </template>
+              <el-input v-model="form.base_url_live_input" :maxlength="getFieldMaxLength('base_url_live_input')" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -178,12 +312,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
+import { QuestionFilled } from '@element-plus/icons-vue'
 import { toolsApi } from '@/api/tools'
 import { formatDateTime as formatDate } from '@/utils/datetime'
+import DynamicFieldInputs from '@/components/form-config/DynamicFieldInputs.vue'
 import type {
+  DynamicFormValues,
+  FormFieldConfigItem,
   ServiceBaseUrlMode,
   ServiceBaseUrlJsonRowPayload,
   ServiceIdEntry,
@@ -208,6 +346,9 @@ const options = ref<ServiceIdRuleOptionGroup>({
   scope_type: [],
   apn_type: []
 })
+const fieldConfigMap = ref<Record<string, FormFieldConfigItem>>({})
+const fieldConfigs = ref<FormFieldConfigItem[]>([])
+const customFieldConfigs = computed(() => fieldConfigs.value.filter((item) => !item.is_builtin))
 
 const toPositiveInt = (value: unknown, fallback: number): number => {
   const n = Number(value)
@@ -242,7 +383,8 @@ const emptyForm: ServiceIdEntryPayload = {
   base_url_json_key: '',
   base_url_test_input: '',
   base_url_uat_input: '',
-  base_url_live_input: ''
+  base_url_live_input: '',
+  extra_fields: {}
 }
 
 const form = reactive<ServiceIdEntryPayload>({ ...emptyForm })
@@ -279,6 +421,16 @@ const parseJsonObject = (text: string): Record<string, string> | null => {
   }
 }
 
+const getFieldConfig = (fieldKey: string): FormFieldConfigItem | undefined => fieldConfigMap.value[fieldKey]
+
+const getFieldHelp = (fieldKey: string): string => String(getFieldConfig(fieldKey)?.help_text || '').trim()
+
+const getFieldMaxLength = (fieldKey: string, fallback?: number): number | undefined => {
+  const value = getFieldConfig(fieldKey)?.max_length
+  if (typeof value === 'number' && value > 0) return value
+  return fallback
+}
+
 const buildJsonRowsFromEntry = (item: ServiceIdEntry): ServiceBaseUrlJsonRowPayload[] => {
   const testMap = parseJsonObject(item.base_url_test)
   const uatMap = parseJsonObject(item.base_url_uat)
@@ -303,9 +455,20 @@ const buildJsonRowsFromEntry = (item: ServiceIdEntry): ServiceBaseUrlJsonRowPayl
 }
 
 const buildSubmitPayload = (): ServiceIdEntryPayload => {
+  const normalizedExtraFields = Object.entries(form.extra_fields || {}).reduce<Record<string, string | string[]>>((acc, [key, value]) => {
+    if (Array.isArray(value)) {
+      const next = value.map((item) => String(item || '').trim()).filter(Boolean)
+      if (next.length) acc[key] = next
+      return acc
+    }
+    const text = String(value || '').trim()
+    if (text) acc[key] = text
+    return acc
+  }, {})
   if (form.base_url_mode !== 'json') {
     return {
       ...form,
+      extra_fields: normalizedExtraFields,
       base_url_json_rows: []
     }
   }
@@ -322,12 +485,23 @@ const buildSubmitPayload = (): ServiceIdEntryPayload => {
     base_url_test_input: first.test,
     base_url_uat_input: first.uat,
     base_url_live_input: first.live,
+    extra_fields: normalizedExtraFields,
     base_url_json_rows: rows
   }
 }
 
 const loadOptions = async () => {
   options.value = await toolsApi.getServiceIdRuleOptions(props.toolId, false)
+}
+
+const loadFieldConfigs = async () => {
+  const res = await toolsApi.getServiceIdFieldConfigs(props.toolId)
+  fieldConfigs.value = res.items
+  const next: Record<string, FormFieldConfigItem> = {}
+  res.items.forEach((item) => {
+    next[item.field_key] = item
+  })
+  fieldConfigMap.value = next
 }
 
 const loadEntries = async () => {
@@ -374,7 +548,8 @@ const startEdit = (item: ServiceIdEntry) => {
     base_url_json_key: item.base_url_json_key || '',
     base_url_test_input: item.base_url_test,
     base_url_uat_input: item.base_url_uat,
-    base_url_live_input: item.base_url_live
+    base_url_live_input: item.base_url_live,
+    extra_fields: { ...(item.extra_fields || {}) }
   })
   jsonRows.value = item.base_url_mode === 'json'
     ? buildJsonRowsFromEntry(item)
@@ -424,6 +599,7 @@ onMounted(async () => {
   entriesPage.value = toPositiveInt(queryFirst(route.query.sidEntriesPage), 1)
   entriesPageSize.value = toPositiveInt(queryFirst(route.query.sidEntriesPageSize), 20)
   try {
+    await loadFieldConfigs()
     await loadOptions()
     await loadEntries()
   } catch (error: any) {
@@ -482,5 +658,11 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   margin-top: -6px;
+}
+
+.field-label-with-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>

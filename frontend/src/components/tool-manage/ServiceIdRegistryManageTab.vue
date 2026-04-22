@@ -84,6 +84,27 @@
           </div>
         </el-card>
       </el-tab-pane>
+
+      <el-tab-pane label="字段配置" name="fields">
+        <el-card shadow="never">
+          <template #header>
+            <div class="header-row">
+              <span>字段填写说明与限制</span>
+              <el-button type="primary" @click="openCreateField">新增字段</el-button>
+            </div>
+          </template>
+          <p class="section-hint">可配置字段悬停说明，以及 required / 长度 / 正则 / 允许值限制，实时作用于用户填写页与后端校验。</p>
+          <field-config-manager-table
+            :rows="fieldConfigs"
+            :loading="loadingFieldConfigs"
+            :saving="savingFieldConfigs"
+            :input-type-options="fieldInputTypeOptions"
+            @save="saveFieldConfigs"
+            @refresh="loadFieldConfigs"
+            @delete="(row) => removeFieldConfig(row.field_key, row.label, row.is_builtin)"
+          />
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <el-dialog v-model="editingVisible" title="编辑服务 ID" width="860px">
@@ -147,6 +168,11 @@
         <el-form-item label="访问链路说明">
           <el-input v-model="form.access_link_desc" maxlength="20" />
         </el-form-item>
+        <dynamic-field-inputs
+          :fields="customFieldConfigs"
+          :model-value="(form.extra_fields || {}) as DynamicFormValues"
+          @update:model-value="(value) => { form.extra_fields = value }"
+        />
         <el-form-item label="Base URL 填写方式">
           <el-radio-group v-model="form.base_url_mode">
             <el-radio label="string">字符串</el-radio>
@@ -207,16 +233,46 @@
         <el-button type="primary" :loading="savingEntry" @click="saveEntry">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="createFieldVisible" title="新增字段" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="字段 key（仅小写字母、数字、下划线）">
+          <el-input v-model="newField.field_key" placeholder="例如: biz_owner_email" />
+        </el-form-item>
+        <el-form-item label="字段名称">
+          <el-input v-model="newField.label" placeholder="例如: 业务负责人邮箱" />
+        </el-form-item>
+        <el-form-item label="展示形式">
+          <el-select v-model="newField.input_type" style="width: 100%">
+            <el-option
+              v-for="item in fieldInputTypeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createFieldVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creatingField" @click="createField">新增</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { toolsApi } from '@/api/tools'
 import { formatDateTime as formatDate } from '@/utils/datetime'
+import DynamicFieldInputs from '@/components/form-config/DynamicFieldInputs.vue'
+import FieldConfigManagerTable from '@/components/form-config/FieldConfigManagerTable.vue'
 import type {
+  DynamicFormValues,
+  FormFieldConfigItem,
+  FormFieldInputType,
   ServiceBaseUrlJsonRowPayload,
   ServiceIdEntry,
   ServiceIdEntryPayload,
@@ -231,8 +287,10 @@ const router = useRouter()
 
 const loadingEntries = ref(false)
 const loadingRules = ref(false)
+const loadingFieldConfigs = ref(false)
 const savingRule = ref(false)
 const savingEntry = ref(false)
+const savingFieldConfigs = ref(false)
 const entries = ref<ServiceIdEntry[]>([])
 const entriesTotal = ref(0)
 const entriesPage = ref(1)
@@ -245,13 +303,32 @@ const options = ref<ServiceIdRuleOptionGroup>({
 })
 const editingVisible = ref(false)
 const editingId = ref<number | null>(null)
-const moduleTab = ref<'entries' | 'rules'>('entries')
+const moduleTab = ref<'entries' | 'rules' | 'fields'>('entries')
 const ruleTab = ref<ServiceRuleCategory>('service_type')
 const currentRuleRows = ref<ServiceIdRuleOption[]>([])
 const ruleTotal = ref(0)
 const rulePage = ref(1)
 const rulePageSize = ref(20)
 const newRuleValue = ref('')
+const fieldConfigs = ref<Array<FormFieldConfigItem & { allowed_values_text: string }>>([])
+const customFieldConfigs = computed(() => fieldConfigs.value.filter((item) => !item.is_builtin))
+const creatingField = ref(false)
+const createFieldVisible = ref(false)
+const newField = reactive<{
+  field_key: string
+  label: string
+  input_type: FormFieldInputType
+}>({
+  field_key: '',
+  label: '',
+  input_type: 'text'
+})
+const fieldInputTypeOptions: Array<{ label: string; value: FormFieldInputType }> = [
+  { label: '填空', value: 'text' },
+  { label: '长文本', value: 'textarea' },
+  { label: '单选', value: 'single_select' },
+  { label: '多选', value: 'multi_select' }
+]
 
 const toPositiveInt = (value: unknown, fallback: number): number => {
   const n = Number(value)
@@ -286,7 +363,8 @@ const form = reactive<ServiceIdEntryPayload>({
   base_url_json_key: '',
   base_url_test_input: '',
   base_url_uat_input: '',
-  base_url_live_input: ''
+  base_url_live_input: '',
+  extra_fields: {}
 })
 const createEmptyJsonRow = (): ServiceBaseUrlJsonRowPayload => ({ key: '', test: '', uat: '', live: '' })
 const jsonRows = ref<ServiceBaseUrlJsonRowPayload[]>([createEmptyJsonRow()])
@@ -339,9 +417,20 @@ const buildJsonRowsFromEntry = (item: ServiceIdEntry): ServiceBaseUrlJsonRowPayl
 }
 
 const buildSubmitPayload = (): ServiceIdEntryPayload => {
+  const normalizedExtraFields = Object.entries(form.extra_fields || {}).reduce<DynamicFormValues>((acc, [key, value]) => {
+    if (Array.isArray(value)) {
+      const next = value.map((item) => String(item || '').trim()).filter(Boolean)
+      if (next.length) acc[key] = next
+      return acc
+    }
+    const text = String(value || '').trim()
+    if (text) acc[key] = text
+    return acc
+  }, {})
   if (form.base_url_mode !== 'json') {
     return {
       ...form,
+      extra_fields: normalizedExtraFields,
       base_url_json_rows: []
     }
   }
@@ -358,6 +447,7 @@ const buildSubmitPayload = (): ServiceIdEntryPayload => {
     base_url_test_input: first.test,
     base_url_uat_input: first.uat,
     base_url_live_input: first.live,
+    extra_fields: normalizedExtraFields,
     base_url_json_rows: rows
   }
 }
@@ -395,6 +485,114 @@ const onEntriesPageSizeChange = (size: number) => {
 
 const loadRules = async () => {
   options.value = await toolsApi.getServiceIdRuleOptions(props.toolId, true)
+}
+
+const loadFieldConfigs = async () => {
+  loadingFieldConfigs.value = true
+  try {
+    const res = await toolsApi.getServiceIdFieldConfigs(props.toolId)
+    fieldConfigs.value = res.items.map((item) => ({
+      ...item,
+      allowed_values_text: (item.allowed_values || []).join(', ')
+    }))
+  } finally {
+    loadingFieldConfigs.value = false
+  }
+}
+
+const saveFieldConfigs = async () => {
+  for (const row of fieldConfigs.value) {
+    const minLength = row.min_length
+    const maxLength = row.max_length
+    if (typeof minLength === 'number' && typeof maxLength === 'number' && minLength > maxLength) {
+      ElMessage.warning(`字段「${row.label}」的最小长度不能大于最大长度`)
+      return
+    }
+  }
+  savingFieldConfigs.value = true
+  try {
+    await toolsApi.updateServiceIdFieldConfigs(
+      props.toolId,
+      fieldConfigs.value.map((row) => ({
+        field_key: row.field_key,
+        label: row.label,
+        input_type: row.input_type,
+        sort_order: row.sort_order,
+        help_text: (row.help_text || '').trim() || null,
+        required: row.required,
+        min_length: row.min_length ?? null,
+        max_length: row.max_length ?? null,
+        regex_pattern: (row.regex_pattern || '').trim() || null,
+        regex_error_message: (row.regex_error_message || '').trim() || null,
+        allowed_values: (row.allowed_values_text || '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean)
+      }))
+    )
+    await loadFieldConfigs()
+    ElMessage.success('字段配置已保存')
+  } catch (error: any) {
+    ElMessage.error(error.message || '保存字段配置失败')
+  } finally {
+    savingFieldConfigs.value = false
+  }
+}
+
+const openCreateField = () => {
+  Object.assign(newField, {
+    field_key: '',
+    label: '',
+    input_type: 'text' as FormFieldInputType
+  })
+  createFieldVisible.value = true
+}
+
+const createField = async () => {
+  const fieldKey = newField.field_key.trim()
+  const label = newField.label.trim()
+  if (!fieldKey || !label) {
+    ElMessage.warning('字段 key 和字段名称都需要填写')
+    return
+  }
+  creatingField.value = true
+  try {
+    await toolsApi.createServiceIdFieldConfig(props.toolId, {
+      field_key: fieldKey,
+      label,
+      input_type: newField.input_type
+    })
+    ElMessage.success('字段已新增')
+    createFieldVisible.value = false
+    await loadFieldConfigs()
+  } catch (error: any) {
+    ElMessage.error(error.message || '新增字段失败')
+  } finally {
+    creatingField.value = false
+  }
+}
+
+const removeFieldConfig = async (fieldKey: string, label: string, isBuiltin: boolean) => {
+  if (isBuiltin) {
+    ElMessage.warning('内置字段不支持删除')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除字段「${label}」？历史记录中的该字段值也会被清理。`, '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+  } catch {
+    return
+  }
+  try {
+    await toolsApi.deleteServiceIdFieldConfig(props.toolId, fieldKey)
+    ElMessage.success('字段已删除')
+    await loadFieldConfigs()
+  } catch (error: any) {
+    ElMessage.error(error.message || '删除字段失败')
+  }
 }
 
 const loadRulePage = async () => {
@@ -443,7 +641,8 @@ const openEdit = (item: ServiceIdEntry) => {
     base_url_json_key: item.base_url_json_key || '',
     base_url_test_input: item.base_url_test,
     base_url_uat_input: item.base_url_uat,
-    base_url_live_input: item.base_url_live
+    base_url_live_input: item.base_url_live,
+    extra_fields: { ...(item.extra_fields || {}) }
   })
   jsonRows.value = item.base_url_mode === 'json'
     ? buildJsonRowsFromEntry(item)
@@ -570,7 +769,10 @@ onMounted(async () => {
   const q = route.query
   const sidManageTab = queryFirst(q.sidManageTab)
   const sidRuleTab = queryFirst(q.sidRuleTab)
-  moduleTab.value = sidManageTab === 'rules' ? 'rules' : 'entries'
+  moduleTab.value = (
+    sidManageTab === 'rules' ||
+    sidManageTab === 'fields'
+  ) ? sidManageTab : 'entries'
   ruleTab.value = (
     sidRuleTab === 'service_type' ||
     sidRuleTab === 'psga' ||
@@ -585,6 +787,7 @@ onMounted(async () => {
     await loadEntries()
     await loadRules()
     await loadRulePage()
+    await loadFieldConfigs()
   } catch (error: any) {
     ElMessage.error(error.message || '加载管理数据失败')
   }
@@ -612,6 +815,12 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.section-hint {
+  color: #909399;
+  font-size: 13px;
+  margin: 0 0 12px;
 }
 
 .table-pagination {
@@ -653,4 +862,5 @@ onMounted(async () => {
   justify-content: flex-end;
   margin-top: -6px;
 }
+
 </style>

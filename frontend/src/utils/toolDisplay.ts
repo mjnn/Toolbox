@@ -9,3 +9,22 @@ export const getToolDisplayName = (toolName?: string | null): string => {
   if (!normalized) return ''
   return TOOL_DISPLAY_NAME_MAP[normalized] || normalized
 }
+
+export const resolveToolDisplayName = (
+  toolName?: string | null,
+  displayName?: string | null
+): string => {
+  const custom = (displayName || '').trim()
+  if (custom) return custom
+  return getToolDisplayName(toolName)
+}
+
+export const resolveToolDisplayDescription = (
+  description?: string | null,
+  displayDescription?: string | null
+): string => {
+  const custom = (displayDescription || '').trim()
+  if (custom) return custom
+  const fallback = (description || '').trim()
+  return fallback || '暂无描述'
+}

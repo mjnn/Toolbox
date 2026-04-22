@@ -28,6 +28,9 @@ class UserCreate(UserBase):
     password: str
     full_name: str = Field(..., min_length=1, max_length=100)
     department: str = Field(..., min_length=1, max_length=100)
+    requested_tool_id: Optional[int] = None
+    requested_tool_reason: Optional[str] = Field(default=None, max_length=500)
+    registration_entry: Optional[Literal["direct_register", "apply_tool"]] = None
 
 
 class UserUpdate(BaseModel):
@@ -50,6 +53,12 @@ class AccountDeleteConfirm(BaseModel):
 class RegisterResponse(BaseModel):
     message: str
     username: str
+
+
+class PublicNewToolSuggestionCreate(BaseModel):
+    nickname: str = Field(..., min_length=1, max_length=50)
+    contact: Optional[str] = Field(default=None, max_length=100)
+    content: str = Field(..., min_length=5, max_length=2000)
 
 
 class UserInDB(UserBase):
@@ -113,10 +122,16 @@ class AdminUserImportResponse(BaseModel):
     created_users: List[UserInDB]
     skipped_items: List[AdminUserImportIssue]
 
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str = Field(..., min_length=8, max_length=128)
+
 # Tool schemas
 class ToolBase(BaseModel):
     name: str
     description: Optional[str] = None
+    display_name: Optional[str] = None
+    display_description: Optional[str] = None
     version: str = "1.0.0"
     spec_revision: Optional[str] = None
     behavior_catalog_json: Optional[str] = None
@@ -133,6 +148,11 @@ class ToolStatusUpdate(BaseModel):
     """工具管理页：可用 / 暂不可用"""
 
     is_active: bool
+
+
+class ToolDisplayConfigUpdate(BaseModel):
+    display_name: Optional[str] = Field(default=None, max_length=100)
+    display_description: Optional[str] = Field(default=None, max_length=1000)
 
 
 class ToolInDB(ToolBase):
@@ -315,6 +335,7 @@ class ServiceIdEntryBase(BaseModel):
     base_url_uat_input: str = Field(min_length=1)
     base_url_live_input: str = Field(min_length=1)
     base_url_json_rows: List[ServiceBaseUrlJsonRow] = Field(default_factory=list)
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ServiceIdEntryCreate(ServiceIdEntryBase):
@@ -342,6 +363,7 @@ class ServiceIdEntryInDB(BaseModel):
     base_url_test: str
     base_url_uat: str
     base_url_live: str
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
     created_by: int
     updated_by: int
     created_by_name: Optional[str] = None
@@ -393,6 +415,61 @@ class ServiceIdRuleOptionGroupResponse(BaseModel):
 class PaginatedServiceIdRuleOptions(BaseModel):
     total: int
     items: List[ServiceIdRuleOptionInDB]
+
+
+class ServiceIdFieldConfigItem(BaseModel):
+    field_key: str
+    label: str
+    input_type: Literal["text", "textarea", "single_select", "multi_select"] = "text"
+    is_builtin: bool = False
+    sort_order: int = 0
+    help_text: Optional[str] = None
+    required: bool
+    min_length: Optional[int] = None
+    max_length: Optional[int] = None
+    regex_pattern: Optional[str] = None
+    regex_error_message: Optional[str] = None
+    allowed_values: List[str] = Field(default_factory=list)
+
+
+class ServiceIdFieldConfigListResponse(BaseModel):
+    items: List[ServiceIdFieldConfigItem]
+
+
+class ServiceIdFieldConfigUpdateItem(BaseModel):
+    field_key: str
+    label: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    input_type: Optional[Literal["text", "textarea", "single_select", "multi_select"]] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = Field(default=None, ge=0, le=100000)
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    required: Optional[bool] = None
+    min_length: Optional[int] = Field(default=None, ge=0, le=5000)
+    max_length: Optional[int] = Field(default=None, ge=0, le=5000)
+    regex_pattern: Optional[str] = Field(default=None, max_length=500)
+    regex_error_message: Optional[str] = Field(default=None, max_length=200)
+    allowed_values: Optional[List[str]] = None
+
+
+class ServiceIdFieldConfigUpdateRequest(BaseModel):
+    items: List[ServiceIdFieldConfigUpdateItem]
+
+
+class ServiceIdFieldConfigCreateRequest(BaseModel):
+    field_key: str = Field(min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=100)
+    input_type: Literal["text", "textarea", "single_select", "multi_select"] = "text"
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    required: Optional[bool] = None
+    min_length: Optional[int] = Field(default=None, ge=0, le=5000)
+    max_length: Optional[int] = Field(default=None, ge=0, le=5000)
+    regex_pattern: Optional[str] = Field(default=None, max_length=500)
+    regex_error_message: Optional[str] = Field(default=None, max_length=200)
+    allowed_values: Optional[List[str]] = None
+
+
+class ServiceIdFieldConfigDeleteRequest(BaseModel):
+    field_key: str = Field(min_length=1, max_length=64)
 
 
 class APIAccessLogInDB(BaseModel):
@@ -573,6 +650,34 @@ class MosRuntimeCredentialsUpdateRequest(BaseModel):
     request_timeout_seconds: Optional[int] = Field(default=None, ge=1, le=600)
 
 
+class MosDbOptimizationUpdateRequest(BaseModel):
+    pool_size: Optional[int] = Field(default=None, ge=1, le=32)
+    max_overflow: Optional[int] = Field(default=None, ge=0, le=32)
+    pool_timeout_seconds: Optional[int] = Field(default=None, ge=5, le=120)
+    pool_recycle_seconds: Optional[int] = Field(default=None, ge=30, le=7200)
+    workers: Optional[int] = Field(default=None, ge=1, le=16)
+    statement_timeout_ms: Optional[int] = Field(default=None, ge=1000, le=120000)
+    apply_to_env: bool = False
+
+
+ToolRuntimeEnvLiteral = Literal["internal", "external"]
+
+
+class ToolVisibilityConfigUpdate(BaseModel):
+    external_hosts: Optional[List[str]] = None
+    internal_visible_tool_keys: Optional[List[str]] = None
+    external_visible_tool_keys: Optional[List[str]] = None
+
+
+class ToolVisibilityConfigResponse(BaseModel):
+    current_runtime_env: ToolRuntimeEnvLiteral
+    runtime_env_source: str
+    external_hosts: List[str]
+    internal_visible_tool_keys: List[str]
+    external_visible_tool_keys: List[str]
+    all_tools: List[ToolInDB]
+
+
 class MosTokenPreloadRequest(BaseModel):
     scopes: Optional[List[str]] = None
     wait: bool = False
@@ -582,6 +687,8 @@ class MosTokenPreloadRequest(BaseModel):
 
 class RsaLivestreamConfigResponse(BaseModel):
     stream_page_url: str
+    resolved_stream_flv_url: Optional[str] = None
+    internal_flv_proxy_url: str
     stream_server: str
     stream_key: str
     placeholder_enabled: bool

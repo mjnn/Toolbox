@@ -109,7 +109,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="420" fixed="right">
           <template #default="scope">
             <el-button
               v-if="!scope.row.is_approved && !scope.row.is_superuser"
@@ -127,6 +127,16 @@
               @click="openRoleDialog(scope.row)"
             >
               配置角色
+            </el-button>
+            <el-button
+              v-if="isAdmin && scope.row.id !== currentUser?.id"
+              type="warning"
+              size="small"
+              plain
+              :loading="resettingUserId === scope.row.id"
+              @click="resetUserPassword(scope.row)"
+            >
+              重置密码
             </el-button>
             <el-button
               v-if="isAdmin && scope.row.id !== currentUser?.id && !scope.row.is_superuser"
@@ -222,6 +232,7 @@ const selectedUser = ref<UserInDB | null>(null)
 const roleForm = ref({ tool_user: false, tool_owner: false })
 const approvalFilter = ref<'all' | 'pending' | 'approved'>('all')
 const approvingId = ref<number | null>(null)
+const resettingUserId = ref<number | null>(null)
 const deletingUserId = ref<number | null>(null)
 const importingUsers = ref(false)
 const downloadingTemplate = ref(false)
@@ -407,6 +418,36 @@ const approveUser = async (user: UserInDB) => {
     ElMessage.error(error.message || '操作失败')
   } finally {
     approvingId.value = null
+  }
+}
+
+const resetUserPassword = async (user: UserInDB) => {
+  let newPassword = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `请为用户「${user.username}」设置新的临时密码（至少 8 位）。`,
+      '重置密码',
+      {
+        confirmButtonText: '确认重置',
+        cancelButtonText: '取消',
+        inputType: 'password',
+        inputPattern: /^.{8,}$/,
+        inputErrorMessage: '密码至少 8 位',
+      }
+    )
+    newPassword = String(value || '')
+  } catch {
+    return
+  }
+
+  resettingUserId.value = user.id
+  try {
+    await adminApi.resetUserPassword(user.id, { new_password: newPassword })
+    ElMessage.success('密码已重置，请线下告知用户新密码，并提醒其登录后尽快修改')
+  } catch (error: any) {
+    ElMessage.error(error.message || '重置密码失败')
+  } finally {
+    resettingUserId.value = null
   }
 }
 

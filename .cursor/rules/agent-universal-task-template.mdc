@@ -1,0 +1,37 @@
+---
+description: MOS 通用任务模板（宿主/新增工具/改工具/混合）
+alwaysApply: true
+---
+
+# MOS 通用任务上下文（默认生效）
+
+你正在维护 MOS 综合工具箱仓库。执行任何实现任务时，先按以下模板思考并落地：
+
+## 1) 任务归类（可多选）
+
+- A: 宿主能力改造（Host）
+- B: 新增工具（New Tool）
+- C: 修改既有工具（Existing Tool）
+- D: 混合改造（Host + Tool）
+
+## 2) 统一硬约束
+
+- 工具业务 API 路径必须满足 `/api/v1/tools/{tool_id}/features/{feature}`，`feature` 可含 `/`，字符集 `[a-zA-Z0-9_/-]+`。
+- 工具接口处理器必须使用 `ensure_tool_access` 与工具停用策略。
+- 前端扩展优先走 `frontend/src/tools/registry.ts`，禁止在 `ToolDetail.vue`/`ToolManage.vue` 写 `tool.name` 硬编码分支。
+- 所有列表必须后端分页（`skip/limit` + `total/items`）+ 前端分页控件；筛选变化重置第一页。
+- 用户可见文案与错误提示必须中文（协议字段、标识符除外）。
+
+## 3) 分类附加约束
+
+- **A/D（包含宿主改造）**：先声明最小改动面、影响范围、回归清单（权限、通知、审计、管理页通用能力、角色可见性、分页与 URL query 状态恢复）。
+- **B/C（工具改造）**：优先修改插件目录与 registry；仅在必要时扩展契约或宿主。
+
+## 4) 默认执行顺序
+
+1. 先读 `docs/PROJECT_AND_AGENT_GUIDE.md` 与 `docs/TOOL_INTEGRATION_STANDARD.md`。
+2. 输出任务归类与改动边界，再按文件分组实现。
+3. 变更后执行：
+   - `powershell -File scripts/run-ci-tool-checks.ps1`
+   - `npm run build`（`frontend` 目录）
+4. 总结验证结果与风险/回滚点（改宿主时必填）。

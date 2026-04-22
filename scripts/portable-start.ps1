@@ -26,7 +26,7 @@ if (Test-Path $PidFile) {
     }
 }
 
-$env:TOOLBOX_BOOTSTRAP_USERS = "1"
+$env:TOOLBOX_BOOTSTRAP_USERS = "0"
 $env:TOOLBOX_LOG_DIR = $LogsDir
 $frontendDistCandidates = @(
     (Join-Path $Root "frontend\dist"),
@@ -97,10 +97,8 @@ if ($lanIps.Count -gt 0) {
     Write-Host "  (No LAN IPv4 detected. Check adapter/network state.)"
 }
 Write-Host ""
-Write-Host "Default accounts:"
-Write-Host "  admin / admin123         (administrator)"
-Write-Host "  owner / owner123         (feature owner)"
-Write-Host "  user / user12345         (normal user)"
+Write-Host "Bootstrap demo accounts are disabled in portable deployment mode."
+Write-Host "Please use production users in your PostgreSQL (RDS) database."
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  backend runtime  -> logs\backend-runtime.out.log / logs\backend-runtime.err.log"

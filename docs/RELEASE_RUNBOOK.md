@@ -10,7 +10,8 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 # MOS综合工具箱 · 发布 Runbook
 
 > **何时读本文**：准备合并到 `main` / 打标签 / 向生产或预发布环境交付前。  
-> **与谁搭配**：`docs/PROJECT_AND_AGENT_GUIDE.md`（架构与端口）、`docs/TOOL_INTEGRATION_STANDARD.md` §10（工具侧验收）、`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`（Windows 便携包细则）。
+> **与谁搭配**：`docs/PROJECT_AND_AGENT_GUIDE.md`（架构与端口）、`docs/TOOL_INTEGRATION_STANDARD.md` §10（工具侧验收）、`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`（Windows 便携包细则）、`docs/PERF_AND_DB_OPTIMIZATION_RUNBOOK.md`（性能验收与数据库优化）。
+> **外网单工具发布**：见 `docs/EXTERNAL_PUBLIC_RELEASE.md` 与 `docs/TOOL_VISIBILITY_ENV_RUNBOOK.md`。
 
 ---
 
@@ -106,6 +107,7 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 | 3 | 登录 | 已知账号可登录；新注册流程符合「需审批」产品设计时，未审批用户无法使用需权限功能 |
 | 4 | 侧栏与路由 | `Dashboard.vue` 约定路由可访问（超管与普通用户可见性差异见 `TOOL_INTEGRATION_STANDARD.md` §8） |
 | 5 | 任一端点：`/api/v1/tools/{id}/features/...` | 带有效 JWT 调用成功路径；随后在**工具管理 → 使用记录**能看到记录，且 **行为中文名**与 `behavior_catalog` 一致（见主规范 §6.3） |
+| 6 | 压测验收（建议） | 运行 `scripts/run-perf-suite.ps1`（可选 `-Quick`），确认 `p95/p99/fail_rate` 达标并生成报告 |
 
 **工具专属**：按 `TOOL_INTEGRATION_STANDARD.md` §10 勾选；涉及插件时核对 `contracts/tool.manifest.schema.json` 与各插件 `tool.manifest.json`。
 
@@ -141,6 +143,7 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 - [ ] `TOOLBOX_BOOTSTRAP_USERS` 未在生产开启  
 - [ ] 数据库已备份（及静态文件若需要）  
 - [ ] `/health` 与 §4 冒烟通过  
+- [ ] 已执行 `scripts/run-perf-suite.ps1`，性能报告达标并归档  
 - [ ] （若涉及 schema）迁移/变更已在预发布验证并有回滚预案  
 
 ---

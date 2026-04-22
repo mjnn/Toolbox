@@ -1,5 +1,6 @@
 import { api } from './auth'
 import type {
+  AdminResetPasswordPayload,
   AdminUserImportResponse,
   FeedbackCountsResponse,
   FeedbackWithUser,
@@ -14,6 +15,8 @@ import type {
   ToolAnnouncementInDB,
   PaginatedToolAnnouncements,
   ToolOwnerWithUser,
+  ToolVisibilityConfigResponse,
+  ToolVisibilityConfigUpdatePayload,
   UserInDB,
   UserRolesResponse,
 } from './types'
@@ -29,6 +32,60 @@ export interface AuditLogListParams {
 }
 
 export const adminApi = {
+  getSystemDbOptimization(): Promise<{
+    database_url_masked: string
+    is_remote_database: boolean
+    current_env: {
+      SQLALCHEMY_POOL_SIZE: number
+      SQLALCHEMY_MAX_OVERFLOW: number
+      SQLALCHEMY_POOL_TIMEOUT: number
+      SQLALCHEMY_POOL_RECYCLE: number
+      TOOLBOX_WORKERS: number
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: number
+    }
+    saved_overrides: Record<string, number>
+    recommendation: {
+      pool_size: number
+      max_overflow: number
+      pool_timeout_seconds: number
+      pool_recycle_seconds: number
+      workers: number
+      statement_timeout_ms: number
+    }
+    requires_restart: boolean
+    note: string
+  }> {
+    return api.get('/admin/system/db-optimization')
+  },
+
+  updateSystemDbOptimization(payload: {
+    pool_size?: number
+    max_overflow?: number
+    pool_timeout_seconds?: number
+    pool_recycle_seconds?: number
+    workers?: number
+    statement_timeout_ms?: number
+    apply_to_env?: boolean
+  }): Promise<{
+    saved_overrides: Record<string, number>
+    applied_to_env: boolean
+    requires_restart: boolean
+  }> {
+    return api.put('/admin/system/db-optimization', payload)
+  },
+
+  pingSystemDbOptimization(): Promise<{ elapsed_ms: number }> {
+    return api.post('/admin/system/db-optimization/ping')
+  },
+
+  getToolVisibilityConfig(): Promise<ToolVisibilityConfigResponse> {
+    return api.get('/admin/system/tool-visibility')
+  },
+
+  updateToolVisibilityConfig(payload: ToolVisibilityConfigUpdatePayload): Promise<ToolVisibilityConfigResponse> {
+    return api.put('/admin/system/tool-visibility', payload)
+  },
+
   listGlobalAnnouncements(params: { skip: number; limit: number; only_active?: boolean }): Promise<PaginatedToolAnnouncements> {
     return api.get('/admin/announcements/global', { params })
   },
@@ -80,6 +137,13 @@ export const adminApi = {
 
   updateToolStatus(toolId: number, is_active: boolean): Promise<ToolInDB> {
     return api.patch(`/admin/tools/${toolId}/status`, { is_active })
+  },
+
+  updateToolDisplayConfig(
+    toolId: number,
+    payload: { display_name?: string | null; display_description?: string | null }
+  ): Promise<ToolInDB> {
+    return api.put(`/admin/tools/${toolId}/display-config`, payload)
   },
 
   publishToolRelease(toolId: number, data: ToolReleasePublishPayload): Promise<ToolReleaseInDB> {
@@ -200,12 +264,14 @@ export const adminApi = {
     return api.post(`/admin/users/${userId}/approve`)
   },
 
+  resetUserPassword(userId: number, data: AdminResetPasswordPayload): Promise<SuccessResponse> {
+    return api.post(`/admin/users/${userId}/reset-password`, data)
+  },
+
   importUsersByExcel(file: File): Promise<AdminUserImportResponse> {
     const fd = new FormData()
     fd.append('file', file)
-    return api.post('/admin/users/import-excel', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
+    return api.postForm('/admin/users/import-excel', fd)
   },
 
   async downloadUserImportTemplate(): Promise<Blob> {

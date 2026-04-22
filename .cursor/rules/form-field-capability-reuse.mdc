@@ -1,0 +1,40 @@
+---
+description: 字段配置能力需求自动复用模板（动态表单）
+alwaysApply: true
+---
+
+# 字段配置能力自动复用规则
+
+当用户需求包含以下任一意图时，默认按“可复用字段配置能力”实现，而不是临时写死页面：
+
+- 新增/删除字段
+- 字段类型（单选、多选、填空、长文本）
+- 表单字段配置、动态表单、可配置表单
+- 字段校验规则（必填、长度、正则、可选值）
+
+## 必须先读
+
+1. `docs/FORM_FIELD_CONFIG_MODULE.md`
+2. `backend/app/services/dynamic_form_fields.py`
+3. `backend/app/services/service_id_dynamic_fields.py`
+4. `frontend/src/components/form-config/DynamicFieldInputs.vue`
+5. `frontend/src/components/form-config/FieldConfigManagerTable.vue`
+
+## 默认实现路径（除非用户明确否定）
+
+1. 后端采用：路由层 -> 工具薄封装层 -> 通用动态表单核心层。
+2. 前端优先复用 `form-config` 通用组件，不重复拷贝模板。
+3. 类型优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
+4. 文案保持中文，列表与管理页保持分页约束。
+
+## 反例约束（必须避免）
+
+- 禁止在 `backend/app/tools/plugins/*/routes.py` 中新增大段字段校验、字段配置 CRUD、动态字段值读写实现；应下沉到 `backend/app/services/*_dynamic_fields.py` 与 `dynamic_form_fields.py`。
+- 禁止在工具页面内复制粘贴动态字段渲染模板；应复用 `frontend/src/components/form-config/DynamicFieldInputs.vue`。
+- 禁止在工具管理页内复制粘贴字段配置表格模板；应复用 `frontend/src/components/form-config/FieldConfigManagerTable.vue`。
+- 禁止创建平行命名类型（如重复定义另一套 `*FieldInputType`）；优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
+
+## 交付前验证（默认执行）
+
+- `powershell -File scripts/run-ci-tool-checks.ps1`
+- `npm run build`（`frontend` 目录）
