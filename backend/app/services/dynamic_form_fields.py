@@ -132,6 +132,28 @@ def normalize_dynamic_extra_fields(
     return normalized_extra_fields
 
 
+def normalize_dynamic_extra_fields_subset(
+    raw_extra_fields: dict[str, object],
+    dynamic_defs: dict[str, dict[str, Any]],
+    multi_select_input_type: str,
+) -> dict[str, object]:
+    """仅校验并归一化 raw 中出现的键；未出现的自定义列不要求填写（用于用户侧申请等场景）。"""
+    unknown_keys = [key for key in raw_extra_fields.keys() if key not in dynamic_defs]
+    if unknown_keys:
+        raise HTTPException(status_code=400, detail=f"存在未知自定义字段：{', '.join(unknown_keys)}")
+    normalized_extra_fields: dict[str, object] = {}
+    for key in raw_extra_fields.keys():
+        cfg = dynamic_defs[key]
+        normalized = validate_dynamic_field_value(key, raw_extra_fields.get(key), cfg, multi_select_input_type)
+        if isinstance(normalized, list):
+            if normalized:
+                normalized_extra_fields[key] = normalized
+        elif isinstance(normalized, str):
+            if normalized:
+                normalized_extra_fields[key] = normalized
+    return normalized_extra_fields
+
+
 def load_custom_field_values(db: Session, value_model: type, entry_id: int) -> dict[str, object]:
     rows = db.exec(
         select(value_model).where(value_model.entry_id == entry_id)

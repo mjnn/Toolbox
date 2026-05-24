@@ -17,6 +17,7 @@
               size="small"
               :disabled="list.length === 0 || clearingAll"
               :loading="clearingAll"
+              aria-label="清除当前账号下全部通知"
               @click="confirmClearAll"
             >
               清除全部
@@ -39,7 +40,12 @@
             :key="item.id"
             class="notification-item"
             :class="{ unread: !item.is_read }"
+            role="button"
+            tabindex="0"
+            :aria-label="buildNotificationAriaLabel(item)"
             @click="onClickItem(item)"
+            @keydown.enter.prevent="onClickItem(item)"
+            @keydown.space.prevent="onClickItem(item)"
           >
             <div class="notification-title-row">
               <span class="notification-title">{{ item.title }}</span>
@@ -55,6 +61,7 @@
                 link
                 size="small"
                 :loading="deletingId === item.id"
+                :aria-label="`清除通知：${item.title}`"
                 @click.stop="confirmRemoveOne(item)"
               >
                 清除
@@ -111,6 +118,12 @@ const typeLabel = (t: string) => {
   if (t === 'tool') return '工具'
   if (t === 'tool_release') return '工具发版'
   return '系统'
+}
+
+const buildNotificationAriaLabel = (item: NotificationInDB) => {
+  const readLabel = item.is_read ? '已读' : '未读'
+  const kindLabel = typeLabel(item.notification_type)
+  return `${readLabel}${kindLabel}通知：${item.title}。按回车查看详情`
 }
 
 const load = async () => {
@@ -238,6 +251,11 @@ onMounted(() => {
   background: #f5f7fa;
 }
 
+.notification-item:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
 .notification-item.unread {
   border-color: #c6e2ff;
   background: #ecf5ff;
@@ -259,7 +277,7 @@ onMounted(() => {
 
 .notification-time {
   font-size: 12px;
-  color: #909399;
+  color: #606266;
   margin-left: auto;
 }
 

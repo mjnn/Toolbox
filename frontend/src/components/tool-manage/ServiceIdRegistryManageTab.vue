@@ -9,23 +9,95 @@
               <el-button type="primary" @click="exportCsv">导出 CSV</el-button>
             </div>
           </template>
-          <el-table :data="entries" v-loading="loadingEntries" stripe>
-            <el-table-column prop="service_id" label="服务 ID（Service ID）" min-width="180" />
-            <el-table-column prop="business_function" label="业务功能" width="120" />
-            <el-table-column prop="service_type" label="服务类型（ServiceType）" width="160" />
-            <el-table-column prop="scope_type" label="范围（Scope）" width="140" />
-            <el-table-column prop="apn_type" label="网络类型（APN）" width="160" />
-            <el-table-column prop="updated_by_name" label="更改人" width="120" />
-            <el-table-column label="更新时间" width="180">
-              <template #default="scope">{{ formatDate(scope.row.updated_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right">
-              <template #default="scope">
-                <el-button type="primary" size="small" link @click="openEdit(scope.row)">编辑</el-button>
-                <el-button type="danger" size="small" link @click="removeEntry(scope.row.id)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div v-if="canManageAll" v-loading="loadingExportConfig" class="export-csv-config">
+            <div class="export-csv-config-head">
+              <span class="export-csv-config-title">CSV 导出列</span>
+              <div class="export-csv-config-actions">
+                <el-select
+                  v-model="exportColumnToAdd"
+                  placeholder="添加列…"
+                  filterable
+                  clearable
+                  style="width: 240px"
+                  @change="onAddExportColumn"
+                >
+                  <el-option
+                    v-for="opt in exportAddCandidates"
+                    :key="opt.key"
+                    :label="`${opt.default_header} [${opt.key}]`"
+                    :value="opt.key"
+                  />
+                </el-select>
+                <el-button :disabled="savingExportConfig || loadingExportConfig" @click="resetExportConfig">
+                  恢复默认
+                </el-button>
+                <el-button
+                  type="primary"
+                  :loading="savingExportConfig"
+                  :disabled="loadingExportConfig || exportColumnsDraft.length === 0"
+                  @click="saveExportConfig"
+                >
+                  保存导出配置
+                </el-button>
+              </div>
+            </div>
+            <p class="section-hint export-csv-hint">
+              列表自上而下对应 CSV 从左到右的列顺序；表头可按需修改，导出时使用此处文案。自定义字段以 <code>extra__</code> 前缀标识。
+            </p>
+            <el-table
+              v-if="exportColumnsDraft.length"
+              :data="exportColumnsDraft"
+              border
+              size="small"
+              class="export-csv-table"
+              row-key="key"
+            >
+              <el-table-column type="index" label="#" width="48" />
+              <el-table-column prop="key" label="字段" min-width="200" />
+              <el-table-column label="CSV 表头" min-width="260">
+                <template #default="scope">
+                  <el-input v-model="scope.row.header" maxlength="200" show-word-limit />
+                </template>
+              </el-table-column>
+              <el-table-column label="顺序" width="148" fixed="right">
+                <template #default="scope">
+                  <el-button
+                    link
+                    type="primary"
+                    :disabled="scope.$index === 0"
+                    @click="moveExportColumnUp(scope.$index)"
+                  >上移</el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    :disabled="scope.$index === exportColumnsDraft.length - 1"
+                    @click="moveExportColumnDown(scope.$index)"
+                  >下移</el-button>
+                  <el-button link type="danger" @click="removeExportColumn(scope.$index)">移除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-else description="请至少保留一列，或点击「恢复默认」" :image-size="56" />
+          </div>
+          <div class="table-scroll">
+            <el-table :data="entries" v-loading="loadingEntries" stripe>
+              <el-table-column prop="service_id" label="服务 ID（Service ID）" min-width="180" />
+              <el-table-column prop="business_function" label="业务功能" width="120" />
+              <el-table-column prop="service_type" label="服务类型（ServiceType）" width="160" />
+              <el-table-column prop="scope_type" label="范围（Scope）" width="140" />
+              <el-table-column prop="apn_type" label="网络类型（APN）" width="160" />
+              <el-table-column prop="updated_by_name" label="更改人" width="120" />
+              <el-table-column label="更新时间" width="180">
+                <template #default="scope">{{ formatDate(scope.row.updated_at) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="140" fixed="right">
+                <template #default="scope">
+                  <el-button type="primary" size="small" link @click="openEdit(scope.row)">编辑</el-button>
+                  <el-button type="danger" size="small" link @click="removeEntry(scope.row.id)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div class="table-pagination">
             <el-pagination
               v-model:current-page="entriesPage"
@@ -40,51 +112,6 @@
         </el-card>
       </el-tab-pane>
 
-      <el-tab-pane label="规则治理" name="rules">
-        <el-card shadow="never">
-          <template #header>规则定义（服务类型 / PSGA / 范围 / APN）</template>
-          <el-tabs v-model="ruleTab">
-            <el-tab-pane label="服务类型（ServiceType）" name="service_type" />
-            <el-tab-pane label="可用域（PSGA）" name="psga" />
-            <el-tab-pane label="范围（Scope）" name="scope_type" />
-            <el-tab-pane label="网络类型（APN）" name="apn_type" />
-          </el-tabs>
-
-          <div class="rule-create-row">
-            <el-input v-model="newRuleValue" placeholder="新增规则值（仅负责人可维护）" />
-            <el-button type="primary" :loading="savingRule" @click="createRule">新增</el-button>
-          </div>
-
-          <el-table :data="currentRuleRows" v-loading="loadingRules" stripe>
-            <el-table-column prop="value" label="值" />
-            <el-table-column label="启用" width="120">
-              <template #default="scope">
-                <el-switch
-                  :model-value="scope.row.is_active"
-                  @change="(v:boolean) => toggleRule(scope.row.id, v)"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="120">
-              <template #default="scope">
-                <el-button type="danger" size="small" link @click="removeRule(scope.row.id)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <div class="table-pagination">
-            <el-pagination
-              v-model:current-page="rulePage"
-              v-model:page-size="rulePageSize"
-              :total="ruleTotal"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next, jumper"
-              @current-change="onRulePageChange"
-              @size-change="onRulePageSizeChange"
-            />
-          </div>
-        </el-card>
-      </el-tab-pane>
-
       <el-tab-pane label="字段配置" name="fields">
         <el-card shadow="never">
           <template #header>
@@ -93,16 +120,33 @@
               <el-button type="primary" @click="openCreateField">新增字段</el-button>
             </div>
           </template>
-          <p class="section-hint">可配置字段悬停说明，以及 required / 长度 / 正则 / 允许值限制，实时作用于用户填写页与后端校验。</p>
+          <p class="section-hint">
+            可配置字段悬停说明，以及 required / 长度 / 正则；文本类字段可设逗号分隔允许值。单选、多选通过「配置选项」维护选项列表。
+            服务类型 / PSGA / 范围 / 网络类型 四个内置字段的选项在弹窗中走「规则库」维护（与用户填写页下拉一致）。
+            录入页字段顺序与导出列顺序均与下表自上而下一致，可在「顺序」列用「上移 / 下移」调整，说明见表下灰色提示。
+          </p>
           <field-config-manager-table
             :rows="fieldConfigs"
             :loading="loadingFieldConfigs"
             :saving="savingFieldConfigs"
             :input-type-options="fieldInputTypeOptions"
+            :lock-builtin-sort-reorder="false"
             @save="saveFieldConfigs"
             @refresh="loadFieldConfigs"
             @delete="(row) => removeFieldConfig(row.field_key, row.label, row.is_builtin)"
-          />
+          >
+            <template #selectOptionsEditor="{ row }">
+              <template v-if="serviceIdRuleCategory(row.field_key)">
+                <service-id-rule-category-editor
+                  :key="`${row.field_key}-${serviceIdRuleCategory(row.field_key)}`"
+                  :tool-id="props.toolId"
+                  :category="serviceIdRuleCategory(row.field_key)!"
+                  @changed="onServiceIdRuleOptionsChanged"
+                />
+              </template>
+              <select-option-values-editor v-else v-model:text="row.allowed_values_text" />
+            </template>
+          </field-config-manager-table>
         </el-card>
       </el-tab-pane>
     </el-tabs>
@@ -262,13 +306,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { toolsApi } from '@/api/tools'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import DynamicFieldInputs from '@/components/form-config/DynamicFieldInputs.vue'
 import FieldConfigManagerTable from '@/components/form-config/FieldConfigManagerTable.vue'
+import SelectOptionValuesEditor from '@/components/form-config/SelectOptionValuesEditor.vue'
+import ServiceIdRuleCategoryEditor from '@/components/tool-manage/ServiceIdRuleCategoryEditor.vue'
 import type {
   DynamicFormValues,
   FormFieldConfigItem,
@@ -276,7 +322,8 @@ import type {
   ServiceBaseUrlJsonRowPayload,
   ServiceIdEntry,
   ServiceIdEntryPayload,
-  ServiceIdRuleOption,
+  ServiceIdExportColumnItem,
+  ServiceIdExportColumnOption,
   ServiceIdRuleOptionGroup,
   ServiceRuleCategory
 } from '@/api/types'
@@ -286,9 +333,13 @@ const route = useRoute()
 const router = useRouter()
 
 const loadingEntries = ref(false)
-const loadingRules = ref(false)
+const canManageAll = ref(false)
+const loadingExportConfig = ref(false)
+const savingExportConfig = ref(false)
+const exportOptions = ref<ServiceIdExportColumnOption[]>([])
+const exportColumnsDraft = ref<ServiceIdExportColumnItem[]>([])
+const exportColumnToAdd = ref<string | undefined>(undefined)
 const loadingFieldConfigs = ref(false)
-const savingRule = ref(false)
 const savingEntry = ref(false)
 const savingFieldConfigs = ref(false)
 const entries = ref<ServiceIdEntry[]>([])
@@ -303,15 +354,14 @@ const options = ref<ServiceIdRuleOptionGroup>({
 })
 const editingVisible = ref(false)
 const editingId = ref<number | null>(null)
-const moduleTab = ref<'entries' | 'rules' | 'fields'>('entries')
-const ruleTab = ref<ServiceRuleCategory>('service_type')
-const currentRuleRows = ref<ServiceIdRuleOption[]>([])
-const ruleTotal = ref(0)
-const rulePage = ref(1)
-const rulePageSize = ref(20)
-const newRuleValue = ref('')
+const moduleTab = ref<'entries' | 'fields'>('entries')
 const fieldConfigs = ref<Array<FormFieldConfigItem & { allowed_values_text: string }>>([])
 const customFieldConfigs = computed(() => fieldConfigs.value.filter((item) => !item.is_builtin))
+
+const exportKeysInDraft = computed(() => new Set(exportColumnsDraft.value.map((c) => c.key)))
+const exportAddCandidates = computed(() =>
+  exportOptions.value.filter((o) => !exportKeysInDraft.value.has(o.key))
+)
 const creatingField = ref(false)
 const createFieldVisible = ref(false)
 const newField = reactive<{
@@ -329,6 +379,21 @@ const fieldInputTypeOptions: Array<{ label: string; value: FormFieldInputType }>
   { label: '单选', value: 'single_select' },
   { label: '多选', value: 'multi_select' }
 ]
+
+/** 内置字段与规则库类别的对应（选项在字段配置弹窗中维护，不再单独「规则治理」Tab） */
+const SERVICE_ID_RULE_FIELD_MAP: Partial<Record<string, ServiceRuleCategory>> = {
+  service_type: 'service_type',
+  psga_availability: 'psga',
+  scope_type: 'scope_type',
+  apn_type: 'apn_type'
+}
+
+const serviceIdRuleCategory = (fieldKey: string): ServiceRuleCategory | undefined =>
+  SERVICE_ID_RULE_FIELD_MAP[fieldKey]
+
+const onServiceIdRuleOptionsChanged = async () => {
+  await loadRules()
+}
 
 const toPositiveInt = (value: unknown, fallback: number): number => {
   const n = Number(value)
@@ -452,6 +517,96 @@ const buildSubmitPayload = (): ServiceIdEntryPayload => {
   }
 }
 
+const loadExportConfig = async () => {
+  if (!canManageAll.value) return
+  loadingExportConfig.value = true
+  try {
+    const res = await toolsApi.getServiceIdExportConfig(props.toolId)
+    exportOptions.value = res.options
+    exportColumnsDraft.value = res.columns.map((c) => ({ key: c.key, header: c.header }))
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载导出配置失败')
+  } finally {
+    loadingExportConfig.value = false
+  }
+}
+
+const onAddExportColumn = async (key: string | undefined) => {
+  if (!key) return
+  const opt = exportOptions.value.find((o) => o.key === key)
+  if (!opt || exportColumnsDraft.value.some((c) => c.key === key)) {
+    exportColumnToAdd.value = undefined
+    return
+  }
+  exportColumnsDraft.value.push({ key, header: opt.default_header })
+  await nextTick()
+  exportColumnToAdd.value = undefined
+}
+
+const moveExportColumnUp = (idx: number) => {
+  if (idx <= 0) return
+  const arr = exportColumnsDraft.value
+  const t = arr[idx - 1]
+  arr[idx - 1] = arr[idx]
+  arr[idx] = t
+}
+
+const moveExportColumnDown = (idx: number) => {
+  const arr = exportColumnsDraft.value
+  if (idx >= arr.length - 1) return
+  const t = arr[idx + 1]
+  arr[idx + 1] = arr[idx]
+  arr[idx] = t
+}
+
+const removeExportColumn = (idx: number) => {
+  if (exportColumnsDraft.value.length <= 1) {
+    ElMessage.warning('至少保留一列')
+    return
+  }
+  exportColumnsDraft.value.splice(idx, 1)
+}
+
+const saveExportConfig = async () => {
+  if (!exportColumnsDraft.value.length) {
+    ElMessage.warning('至少保留一列')
+    return
+  }
+  savingExportConfig.value = true
+  try {
+    const res = await toolsApi.updateServiceIdExportConfig(props.toolId, exportColumnsDraft.value)
+    exportColumnsDraft.value = res.columns.map((c) => ({ key: c.key, header: c.header }))
+    ElMessage.success('导出配置已保存')
+  } catch (error: any) {
+    ElMessage.error(error.message || '保存失败')
+  } finally {
+    savingExportConfig.value = false
+  }
+}
+
+const resetExportConfig = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将删除已保存的布局并恢复为内置默认列（不含自定义扩展字段）。是否继续？',
+      '恢复默认',
+      { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  savingExportConfig.value = true
+  try {
+    const res = await toolsApi.resetServiceIdExportConfig(props.toolId)
+    exportOptions.value = res.options
+    exportColumnsDraft.value = res.columns.map((c) => ({ key: c.key, header: c.header }))
+    ElMessage.success('已恢复默认导出列')
+  } catch (error: any) {
+    ElMessage.error(error.message || '恢复失败')
+  } finally {
+    savingExportConfig.value = false
+  }
+}
+
 const loadEntries = async () => {
   loadingEntries.value = true
   try {
@@ -463,8 +618,12 @@ const loadEntries = async () => {
     if (!res.can_manage_all) {
       ElMessage.warning('当前账号不是该工具负责人，无法查看全量数据')
     }
+    canManageAll.value = res.can_manage_all
     entries.value = res.items
     entriesTotal.value = res.total
+    if (res.can_manage_all) {
+      await loadExportConfig()
+    }
   } finally {
     loadingEntries.value = false
   }
@@ -595,36 +754,6 @@ const removeFieldConfig = async (fieldKey: string, label: string, isBuiltin: boo
   }
 }
 
-const loadRulePage = async () => {
-  loadingRules.value = true
-  try {
-    const res = await toolsApi.getServiceIdRuleOptionsPage(
-      props.toolId,
-      ruleTab.value,
-      (rulePage.value - 1) * rulePageSize.value,
-      rulePageSize.value,
-      true
-    )
-    currentRuleRows.value = res.items
-    ruleTotal.value = res.total
-  } finally {
-    loadingRules.value = false
-  }
-}
-
-const onRulePageChange = (page: number) => {
-  rulePage.value = page
-  updateQuery({ sidRulePage: String(page) })
-  void loadRulePage()
-}
-
-const onRulePageSizeChange = (size: number) => {
-  rulePageSize.value = size
-  rulePage.value = 1
-  updateQuery({ sidRulePageSize: String(size), sidRulePage: '1' })
-  void loadRulePage()
-}
-
 const openEdit = (item: ServiceIdEntry) => {
   editingId.value = item.id
   Object.assign(form, {
@@ -685,62 +814,6 @@ const removeEntry = async (id: number) => {
   }
 }
 
-const createRule = async () => {
-  const value = newRuleValue.value.trim()
-  if (!value) {
-    ElMessage.warning('请输入规则值')
-    return
-  }
-  savingRule.value = true
-  try {
-    await toolsApi.createServiceIdRuleOption(props.toolId, {
-      category: ruleTab.value,
-      value
-    })
-    newRuleValue.value = ''
-    ElMessage.success('规则已新增')
-    await loadRules()
-    await loadRulePage()
-  } catch (error: any) {
-    ElMessage.error(error.message || '新增规则失败')
-  } finally {
-    savingRule.value = false
-  }
-}
-
-const toggleRule = async (id: number, value: boolean) => {
-  try {
-    await toolsApi.updateServiceIdRuleOption(props.toolId, { id, is_active: value })
-    await loadRules()
-    await loadRulePage()
-  } catch (error: any) {
-    ElMessage.error(error.message || '更新规则状态失败')
-  }
-}
-
-const removeRule = async (id: number) => {
-  try {
-    await ElMessageBox.confirm('确定删除该规则？', '提示', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning'
-    })
-  } catch {
-    return
-  }
-  try {
-    await toolsApi.deleteServiceIdRuleOption(props.toolId, id)
-    ElMessage.success('规则已删除')
-    await loadRules()
-    if (rulePage.value > 1 && currentRuleRows.value.length <= 1) {
-      rulePage.value -= 1
-    }
-    await loadRulePage()
-  } catch (error: any) {
-    ElMessage.error(error.message || '删除规则失败')
-  }
-}
-
 const exportCsv = async () => {
   try {
     const blob = await toolsApi.exportServiceIdEntries(props.toolId)
@@ -755,38 +828,28 @@ const exportCsv = async () => {
   }
 }
 
-watch(ruleTab, () => {
-  rulePage.value = 1
-  updateQuery({ sidRuleTab: ruleTab.value, sidRulePage: '1' })
-  void loadRulePage()
-})
-
 watch(moduleTab, (value) => {
   updateQuery({ sidManageTab: value })
+  if (value === 'entries' && canManageAll.value) {
+    void loadExportConfig()
+  }
 })
 
 onMounted(async () => {
   const q = route.query
   const sidManageTab = queryFirst(q.sidManageTab)
-  const sidRuleTab = queryFirst(q.sidRuleTab)
-  moduleTab.value = (
-    sidManageTab === 'rules' ||
-    sidManageTab === 'fields'
-  ) ? sidManageTab : 'entries'
-  ruleTab.value = (
-    sidRuleTab === 'service_type' ||
-    sidRuleTab === 'psga' ||
-    sidRuleTab === 'scope_type' ||
-    sidRuleTab === 'apn_type'
-  ) ? sidRuleTab : 'service_type'
+  if (sidManageTab === 'fields') {
+    moduleTab.value = 'fields'
+  } else if (sidManageTab === 'rules') {
+    moduleTab.value = 'fields'
+  } else {
+    moduleTab.value = 'entries'
+  }
   entriesPage.value = toPositiveInt(queryFirst(q.sidEntriesPage), 1)
   entriesPageSize.value = toPositiveInt(queryFirst(q.sidEntriesPageSize), 20)
-  rulePage.value = toPositiveInt(queryFirst(q.sidRulePage), 1)
-  rulePageSize.value = toPositiveInt(queryFirst(q.sidRulePageSize), 20)
   try {
     await loadEntries()
     await loadRules()
-    await loadRulePage()
     await loadFieldConfigs()
   } catch (error: any) {
     ElMessage.error(error.message || '加载管理数据失败')
@@ -811,14 +874,8 @@ onMounted(async () => {
   align-items: center;
 }
 
-.rule-create-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 .section-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 12px;
 }
@@ -861,6 +918,72 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   margin-top: -6px;
+}
+
+.export-csv-config {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.export-csv-config-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.export-csv-config-title {
+  font-weight: 600;
+  color: #303133;
+}
+
+.export-csv-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.export-csv-hint {
+  margin-bottom: 10px;
+}
+
+.export-csv-table {
+  margin-top: 4px;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .header-row,
+  .json-mode-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .table-pagination {
+    justify-content: flex-start;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-date-editor),
+  :deep(.el-input-number),
+  :deep(.el-textarea) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  :deep(.el-col) {
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
 }
 
 </style>

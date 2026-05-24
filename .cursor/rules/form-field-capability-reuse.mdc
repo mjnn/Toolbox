@@ -15,15 +15,17 @@ alwaysApply: true
 ## 必须先读
 
 1. `docs/FORM_FIELD_CONFIG_MODULE.md`
-2. `backend/app/services/dynamic_form_fields.py`
-3. `backend/app/services/service_id_dynamic_fields.py`
-4. `frontend/src/components/form-config/DynamicFieldInputs.vue`
-5. `frontend/src/components/form-config/FieldConfigManagerTable.vue`
+2. `.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`（字段配置表 UI/插槽与 Service ID 规则合一的快照）
+3. `backend/app/services/dynamic_form_fields.py`
+4. `backend/app/services/service_id_dynamic_fields.py`
+5. `frontend/src/components/form-config/DynamicFieldInputs.vue`
+6. `frontend/src/components/form-config/FieldConfigManagerTable.vue`（含 `#selectOptionsEditor` 插槽与 `FieldConfigTableRow`）
+7. `frontend/src/components/form-config/SelectOptionValuesEditor.vue`（单选/多选默认静态选项编辑器）
 
 ## 默认实现路径（除非用户明确否定）
 
 1. 后端采用：路由层 -> 工具薄封装层 -> 通用动态表单核心层。
-2. 前端优先复用 `form-config` 通用组件，不重复拷贝模板。
+2. 前端优先复用 `form-config` 通用组件，不重复拷贝模板；字段配置表优先用 `FieldConfigManagerTable.vue`，单选/多选选项用其弹窗默认体或 `#selectOptionsEditor` 扩展（例如 Service ID 四内置枚举用 `ServiceIdRuleCategoryEditor.vue` 接规则库，见 `.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`）。
 3. 类型优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
 4. 文案保持中文，列表与管理页保持分页约束。
 
@@ -32,9 +34,10 @@ alwaysApply: true
 - 禁止在 `backend/app/tools/plugins/*/routes.py` 中新增大段字段校验、字段配置 CRUD、动态字段值读写实现；应下沉到 `backend/app/services/*_dynamic_fields.py` 与 `dynamic_form_fields.py`。
 - 禁止在工具页面内复制粘贴动态字段渲染模板；应复用 `frontend/src/components/form-config/DynamicFieldInputs.vue`。
 - 禁止在工具管理页内复制粘贴字段配置表格模板；应复用 `frontend/src/components/form-config/FieldConfigManagerTable.vue`。
+- 禁止为 Service ID 再单独维护一套与 `FieldConfigManagerTable` 并行的「规则治理」整页表格；四内置枚举选项应通过 `#selectOptionsEditor` + `ServiceIdRuleCategoryEditor.vue` 与字段配置合一（见 `.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`）。
 - 禁止创建平行命名类型（如重复定义另一套 `*FieldInputType`）；优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
 
 ## 交付前验证（默认执行）
 
 - `powershell -File scripts/run-ci-tool-checks.ps1`
-- `npm run build`（`frontend` 目录）
+- `pnpm install --frozen-lockfile` 与 `pnpm run build`（`frontend` 目录；与 CI / `Dockerfile` 一致）

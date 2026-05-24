@@ -87,7 +87,7 @@ onMounted(() => {
 }
 
 .placeholder-title {
-  color: #909399;
+  color: #606266;
   font-size: 20px;
   font-weight: 600;
   padding-top: 12px;

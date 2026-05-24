@@ -11,6 +11,16 @@
         <div class="card-header">
           <span>管理员审计日志</span>
           <div class="header-actions">
+            <el-button
+              v-if="isSuperuser"
+              type="danger"
+              size="small"
+              plain
+              @click="confirmClearLogs"
+              :loading="clearing"
+            >
+              清空全部日志
+            </el-button>
             <el-button size="small" @click="exportCsv" :loading="exporting">导出 CSV</el-button>
             <el-button size="small" @click="fetchLogs" :loading="loading">刷新</el-button>
           </div>
@@ -58,22 +68,40 @@
         </el-form-item>
       </el-form>
 
-      <el-table :data="logs" v-loading="loading" stripe>
-        <el-table-column prop="created_at" label="时间" width="180">
-          <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
-        </el-table-column>
-        <el-table-column prop="username" label="用户" width="140" />
-        <el-table-column label="工具" width="160">
-          <template #default="scope">{{ toolName(scope.row.tool_id) }}</template>
-        </el-table-column>
-        <el-table-column label="行为" min-width="200">
-          <template #default="scope">{{ scope.row.behavior_label || scope.row.feature_name || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="method" label="方法" width="90" />
-        <el-table-column prop="path" label="接口路径" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="status_code" label="状态" width="90" />
-        <el-table-column prop="latency_ms" label="耗时(ms)" width="100" />
-      </el-table>
+      <div v-if="!isMobile" class="table-scroll">
+        <el-table :data="logs" v-loading="loading" stripe>
+          <el-table-column prop="created_at" label="时间" width="180">
+            <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
+          </el-table-column>
+          <el-table-column prop="username" label="用户" width="140" />
+          <el-table-column label="工具" width="160">
+            <template #default="scope">{{ toolName(scope.row.tool_id) }}</template>
+          </el-table-column>
+          <el-table-column label="行为" min-width="200">
+            <template #default="scope">{{ scope.row.behavior_label || scope.row.feature_name || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="method" label="方法" width="90" />
+          <el-table-column prop="path" label="接口路径" min-width="200" show-overflow-tooltip />
+          <el-table-column prop="status_code" label="状态" width="90" />
+          <el-table-column prop="latency_ms" label="耗时(ms)" width="100" />
+        </el-table>
+      </div>
+      <div v-else class="mobile-log-list" v-loading="loading">
+        <el-empty v-if="logs.length === 0" description="暂无日志数据" />
+        <el-card v-for="log in logs" :key="log.id" class="mobile-log-card" shadow="never">
+          <div class="mobile-log-top">
+            <span>{{ log.username || '未知用户' }}</span>
+            <el-tag size="small" :type="(log.status_code || 0) >= 400 ? 'danger' : 'success'">
+              {{ log.status_code ?? '—' }}
+            </el-tag>
+          </div>
+          <div class="mobile-log-meta">时间：{{ formatDate(log.created_at) }}</div>
+          <div class="mobile-log-meta">工具：{{ toolName(log.tool_id) }}</div>
+          <div class="mobile-log-meta">行为：{{ log.behavior_label || log.feature_name || '—' }}</div>
+          <div class="mobile-log-meta">方法：{{ log.method || '—' }} / 耗时：{{ log.latency_ms ?? '—' }}ms</div>
+          <div class="mobile-log-path">路径：{{ log.path || '—' }}</div>
+        </el-card>
+      </div>
 
       <div class="pager-wrap">
         <el-pagination
@@ -92,20 +120,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onBeforeUnmount, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { adminApi } from '@/api/admin'
+import { useAuthStore } from '@/stores/auth'
 import { toolsApi } from '@/api/tools'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import { goBackOrFallback } from '@/utils/navigation'
 import type { APIAccessLogWithUser, ToolInDB } from '@/api/types'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const logs = ref<APIAccessLogWithUser[]>([])
 const total = ref(0)
 const loading = ref(false)
 const exporting = ref(false)
+const clearing = ref(false)
 const tools = ref<ToolInDB[]>([])
 
 const filterUsername = ref('')
@@ -113,6 +144,9 @@ const filterToolId = ref<number | undefined>(undefined)
 const filterKeyword = ref('')
 const page = ref(1)
 const pageSize = ref(20)
+const isMobile = ref(false)
+
+const isSuperuser = computed(() => !!authStore.userInfo?.is_superuser)
 
 const appliedUsername = ref('')
 const appliedToolId = ref<number | undefined>(undefined)
@@ -126,6 +160,10 @@ const toolMap = computed(() => {
 
 const goBack = () => {
   goBackOrFallback(router, '/')
+}
+
+const updateViewportState = () => {
+  isMobile.value = window.innerWidth <= 768
 }
 
 const toolName = (toolId: number | null | undefined) => {
@@ -185,6 +223,29 @@ const onPageSizeChange = () => {
   fetchLogs()
 }
 
+const confirmClearLogs = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将删除数据库中全部行为日志记录，且不可恢复。是否继续？',
+      '清空行为日志',
+      { type: 'warning', confirmButtonText: '确认清空', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  clearing.value = true
+  try {
+    const res = await adminApi.clearAuditLogs()
+    ElMessage.success(res.message || '已清空')
+    page.value = 1
+    await fetchLogs()
+  } catch (error: any) {
+    ElMessage.error(error.message || '清空失败')
+  } finally {
+    clearing.value = false
+  }
+}
+
 const exportCsv = async () => {
   exporting.value = true
   try {
@@ -208,8 +269,14 @@ const exportCsv = async () => {
 }
 
 onMounted(async () => {
+  updateViewportState()
+  window.addEventListener('resize', updateViewportState)
   await loadTools()
   fetchLogs()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportState)
 })
 </script>
 
@@ -246,5 +313,64 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.mobile-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-log-card {
+  border: 1px solid #ebeef5;
+}
+
+.mobile-log-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.mobile-log-meta {
+  margin-top: 6px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.mobile-log-path {
+  margin-top: 8px;
+  color: #303133;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+@media (max-width: 768px) {
+  .audit-container {
+    padding: 12px;
+  }
+
+  .card-header,
+  .header-actions {
+    flex-wrap: wrap;
+  }
+
+  .page-header-title {
+    font-size: 16px;
+  }
+
+  .main-card {
+    margin-top: 12px;
+  }
+
+  .pager-wrap {
+    justify-content: flex-start;
+    margin-top: 12px;
+  }
 }
 </style>

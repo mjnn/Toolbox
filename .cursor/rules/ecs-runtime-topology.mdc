@@ -1,0 +1,39 @@
+---
+description: ECS 当前拓扑与运维边界（2026-04）
+alwaysApply: true
+---
+
+# ECS 当前运行拓扑
+
+- 默认主机：`ssh ecs-main`（`47.116.180.173`）。
+- 服务目录规范：`/srv/apps/<service>/compose.yaml + .env.runtime`。
+- 当前 compose 化服务：
+  - `tool-box-public`（`3000`）+ `tool-box-public-r2`（`3001`）
+  - `sim_api`（`5000`）
+  - `file_server`（`8888`）
+  - `fund_value_em`（`8001 -> 8000`）
+- 当前保留的历史 stale 容器白名单：
+  - `get_dp_data`
+  - `srs`
+
+# 代理与入口边界
+
+- 80 端口由宿主机 Nginx 承担入口。
+- 工具箱新增入口：
+  - `/toolbox/` -> `toolbox_backend`
+  - `/api/v1/` -> `toolbox_backend/api/v1/`
+  - `/health` -> `toolbox_backend/health`
+- 既有入口保持不变：
+  - `/FileServer/`（301 到 `:8888`）
+  - `/FundEm/`（反向代理到 `:8001`）
+  - `/TokenLiveStream`、`/GetSIMInfo/` 等旧路径
+
+# 工具运行时
+
+- 工具 `runtime_status=updating` 时业务 API 503（仅系统超级管理员可排障）；分进程解耦见 `docs/ECS_TOOL_RUNTIME_TOPOLOGY.md` 中 `TOOLBOX_TOOL_UPSTREAMS`。
+
+# Agent 执行要求
+
+- 修改 ECS 服务时，优先改 `compose.yaml + .env.runtime`，避免新增裸 `docker run` 漂移。
+- 清理历史容器时必须先白名单，再批量删除，并更新 `/srv/apps/_inventory/*` 快照。
+- 变更后至少返回：`docker ps`、`nginx -t`（若改代理）、关键入口 `curl` 结果。

@@ -1,0 +1,116 @@
+services:
+  toolbox-host:
+    container_name: toolbox-host
+    image: ${HOST_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT}:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TOOLBOX_EXTERNAL_PUBLIC_IP: ${EXTERNAL_PUBLIC_IP}
+      TOOLBOX_WORKERS: "2"
+      SQLALCHEMY_POOL_SIZE: "12"
+      SQLALCHEMY_MAX_OVERFLOW: "8"
+      SQLALCHEMY_POOL_TIMEOUT: "45"
+      SQLALCHEMY_POOL_RECYCLE: "1800"
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: "15000"
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      TOOLBOX_LOAD_TOOL_PLUGINS: "none"
+      TOOLBOX_TOOL_UPSTREAMS: "service-id-registry=http://toolbox-tool-service-id:3000,mos-integration-toolbox=http://toolbox-tool-mos:3000,rsa-token-livestream=http://toolbox-tool-rsa:3000,data-secure-manage=http://toolbox-tool-data-secure:3000"
+      TOOLBOX_VERSION: ${HOST_TOOLBOX_VERSION}
+      TOOLBOX_SPEC_REVISION: ${HOST_TOOLBOX_SPEC_REVISION}
+      TOOLBOX_VERSION_TITLE: "版本更新"
+      TOOLBOX_CHANGELOG: ${HOST_TOOLBOX_CHANGELOG}
+    depends_on:
+      - toolbox-tool-service-id
+      - toolbox-tool-mos
+      - toolbox-tool-rsa
+      - toolbox-tool-data-secure
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=5).read()"
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 20s
+
+  toolbox-tool-service-id:
+    container_name: toolbox-tool-service-id
+    image: ${SID_IMAGE}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TOOLBOX_WORKERS: "2"
+      TOOLBOX_LOAD_TOOL_PLUGINS: "service-id-registry"
+      TOOLBOX_VISIBLE_TOOL_KEYS: "service-id-registry"
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+      SQLALCHEMY_POOL_TIMEOUT: "45"
+      SQLALCHEMY_POOL_RECYCLE: "1800"
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: "15000"
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      TOOLBOX_VERSION: ${SID_TOOLBOX_VERSION}
+      TOOLBOX_SPEC_REVISION: ${SID_TOOLBOX_SPEC_REVISION}
+      TOOLBOX_VERSION_TITLE: "版本更新"
+      TOOLBOX_CHANGELOG: ${SID_TOOLBOX_CHANGELOG}
+
+  toolbox-tool-mos:
+    container_name: toolbox-tool-mos
+    image: ${MOS_IMAGE}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TOOLBOX_WORKERS: "2"
+      TOOLBOX_LOAD_TOOL_PLUGINS: "mos-integration-toolbox"
+      TOOLBOX_VISIBLE_TOOL_KEYS: "mos-integration-toolbox"
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+      SQLALCHEMY_POOL_TIMEOUT: "45"
+      SQLALCHEMY_POOL_RECYCLE: "1800"
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: "15000"
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      TOOLBOX_VERSION: ${MOS_TOOLBOX_VERSION}
+      TOOLBOX_SPEC_REVISION: ${MOS_TOOLBOX_SPEC_REVISION}
+      TOOLBOX_VERSION_TITLE: "版本更新"
+      TOOLBOX_CHANGELOG: ${MOS_TOOLBOX_CHANGELOG}
+
+  toolbox-tool-rsa:
+    container_name: toolbox-tool-rsa
+    image: ${RSA_IMAGE}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TOOLBOX_WORKERS: "2"
+      TOOLBOX_LOAD_TOOL_PLUGINS: "rsa-token-livestream"
+      TOOLBOX_VISIBLE_TOOL_KEYS: "rsa-token-livestream"
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+      SQLALCHEMY_POOL_TIMEOUT: "45"
+      SQLALCHEMY_POOL_RECYCLE: "1800"
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: "15000"
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      TOOLBOX_VERSION: ${RSA_TOOLBOX_VERSION}
+      TOOLBOX_SPEC_REVISION: ${RSA_TOOLBOX_SPEC_REVISION}
+      TOOLBOX_VERSION_TITLE: "版本更新"
+      TOOLBOX_CHANGELOG: ${RSA_TOOLBOX_CHANGELOG}
+
+  toolbox-tool-data-secure:
+    container_name: toolbox-tool-data-secure
+    image: ${DS_IMAGE}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      TOOLBOX_WORKERS: "2"
+      TOOLBOX_LOAD_TOOL_PLUGINS: "data-secure-manage"
+      TOOLBOX_VISIBLE_TOOL_KEYS: "data-secure-manage"
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+      SQLALCHEMY_POOL_TIMEOUT: "45"
+      SQLALCHEMY_POOL_RECYCLE: "1800"
+      SQLALCHEMY_STATEMENT_TIMEOUT_MS: "15000"
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS}
+      TOOLBOX_VERSION: ${DS_TOOLBOX_VERSION}
+      TOOLBOX_SPEC_REVISION: ${DS_TOOLBOX_SPEC_REVISION}
+      TOOLBOX_VERSION_TITLE: "版本更新"
+      TOOLBOX_CHANGELOG: ${DS_TOOLBOX_CHANGELOG}

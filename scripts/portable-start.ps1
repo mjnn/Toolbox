@@ -1,3 +1,8 @@
+[CmdletBinding()]
+param(
+    [switch] $NoOpenBrowser
+)
+
 $ErrorActionPreference = "Stop"
 
 $Root = (Resolve-Path $PSScriptRoot).Path
@@ -43,12 +48,20 @@ if (-not $resolvedFrontendDist) {
     Write-Host "Warning: frontend dist not found in expected locations."
     Write-Host "Tried:"
     $frontendDistCandidates | ForEach-Object { Write-Host "  - $_" }
+    Write-Host "Fallback: enable API-only mode (TOOLBOX_DISABLE_SPA=1)."
+    $env:TOOLBOX_DISABLE_SPA = "1"
 } else {
     $env:TOOLBOX_FRONTEND_DIST = $resolvedFrontendDist
 }
 $env:TOOLBOX_STATIC_DIR = (Join-Path $Root "static")
 $env:TOOLBOX_HOST = "0.0.0.0"
 $env:TOOLBOX_PORT = "3000"
+if (-not $env:TOOLBOX_WORKERS) { $env:TOOLBOX_WORKERS = "2" }
+if (-not $env:SQLALCHEMY_POOL_SIZE) { $env:SQLALCHEMY_POOL_SIZE = "12" }
+if (-not $env:SQLALCHEMY_MAX_OVERFLOW) { $env:SQLALCHEMY_MAX_OVERFLOW = "8" }
+if (-not $env:SQLALCHEMY_POOL_TIMEOUT) { $env:SQLALCHEMY_POOL_TIMEOUT = "45" }
+if (-not $env:SQLALCHEMY_POOL_RECYCLE) { $env:SQLALCHEMY_POOL_RECYCLE = "1800" }
+if (-not $env:SQLALCHEMY_STATEMENT_TIMEOUT_MS) { $env:SQLALCHEMY_STATEMENT_TIMEOUT_MS = "15000" }
 
 $stdoutLog = Join-Path $LogsDir "backend-runtime.out.log"
 $stderrLog = Join-Path $LogsDir "backend-runtime.err.log"
@@ -110,4 +123,6 @@ Write-Host "Note: Ensure Windows Firewall allows inbound TCP 3000 for LAN access
 Write-Host ""
 Write-Host "Use stop.cmd to stop all services."
 
-Start-Process "http://127.0.0.1:3000" | Out-Null
+if (-not $NoOpenBrowser) {
+    Start-Process "http://127.0.0.1:3000" | Out-Null
+}

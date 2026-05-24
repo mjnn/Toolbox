@@ -1,0 +1,26 @@
+---
+description: 同一页面多功能区须用 Tab 分隔（全项目前端约定）
+alwaysApply: true
+---
+
+# 页面多功能区：Tab 分隔（全项目）
+
+## 规则
+
+- **凡同一视图/页面内存在多个相对独立的功能模块**（用户可在不同模块间切换心智、各自有表单/列表/导出等不同目的），**必须用 Element Plus `el-tabs` + `el-tab-pane`（或经评审的等价分组，如经产品确认的分段控制器）** 显式分隔，**禁止**仅靠纵向堆叠多张 `el-card` 承载多个平级功能。
+- **例外（可不拆 Tab）**：
+  - **单一业务流程的分步/向导**（如先后依赖的步骤、同一工单的「上一步/下一步」），可用步骤条或条件展示，不要求每个步骤一个顶层 Tab。
+  - **同一模块内的辅助说明**（`el-alert`、折叠说明、表内操作）不单独算「多功能区」。
+  - **管理页**已用顶层 Tab（如 `ToolManage` 工具专属 / 通用管理）时，子区域内若仍有多块平级能力，**继续**用子级 `el-tabs` 或二级分组，直到每个 Tab 内语义单一。
+
+## 落地要求
+
+- 新建或改版 `frontend/src/views/*`、`frontend/src/components/tool-detail/*`、`frontend/src/components/tool-manage/*` 时先判断是否存在「多个平级功能」；若是，**优先 Tab 化**，再实现各 pane 内容。
+- Tab **文案用中文**（与项目一致）；`name` 可用英文标识符。
+- 从列表进入编辑等跨模块动作时，可 **`v-model` 切换 Tab**（如点击「编辑」打开「填报」Tab）。
+
+## 参考实现
+
+- 工具使用页：`frontend/src/views/ToolDetail.vue`（**默认首屏为「使用工具」**；另含工具说明、更新记录；可选路由 `?tab=summary|releases|use`）。
+- 数据安全使用页：`frontend/src/components/tool-detail/DataSecureManagePanel.vue`（分步填报 / 我的填报；「我的」内多块再用子 Tab）。
+- 数据安全管理页：`frontend/src/components/tool-manage/DataSecureManageManageTab.vue`（除「项目空间」为单一能力外，其余顶层 Tab 内对弱耦合子块使用子 Tab）。

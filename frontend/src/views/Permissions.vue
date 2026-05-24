@@ -331,12 +331,48 @@ onMounted(() => {
   flex-direction: column;
   gap: 4px;
   font-size: 12px;
-  color: #999;
+  color: #606266;
 }
 
 .permission-actions {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .permissions-container {
+    padding: 12px;
+  }
+
+  .page-header-title {
+    font-size: 16px;
+  }
+
+  .permissions-tabs {
+    margin-top: 12px;
+  }
+
+  .permission-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .tool-name {
+    font-size: 15px;
+  }
+
+  .permission-item {
+    padding: 12px;
+  }
+
+  .permission-actions {
+    width: 100%;
+  }
+
+  .permission-actions .el-button {
+    flex: 1;
+  }
 }
 </style>

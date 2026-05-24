@@ -10,6 +10,7 @@ alwaysApply: true
 - 宿主职责：认证、工具目录、权限审批、管理聚合、审计与通知。
 - 工具职责：在门禁内实现业务 API 与可选前端面板。
 - 默认原则：先插件化扩展，谨慎修改宿主公共逻辑。
+- **交付形态**：内网 **Windows 便携包**（PyInstaller 后端 + 启停脚本，见 `docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md` 与 `scripts/build-release.ps1`）。**ECS/Docker 外网版**按 `docs/EXTERNAL_PUBLIC_RELEASE.md` 与 `.cursor/rules/ecs-public-release-workflow.mdc`，镜像内不包含 Windows 便携产物。
 
 ## 高频路径
 
@@ -27,11 +28,13 @@ alwaysApply: true
 
 ## 强制一致性
 
+- **同一页面多个平级功能模块**必须用 Tab 分隔（`el-tabs`）；流程性分步除外。详见 `.cursor/rules/ui-multi-function-tabs.mdc`。
 - `tool_key`、数据库 `Tool.name`、前端 registry key 必须一致。
 - 路由与 `behavior_catalog` 必须同源更新，保证使用记录行为中文名准确。
 - `ToolManage` 顶层 Tab 顺序：工具专属在前，`general` 在后。
+- **版本治理统一策略**：工具通过 `GET /api/v1/meta/version` 自报 `version/spec_revision/title/changelog`；宿主在“工具管理 -> 版本管理”执行同步并记录历史。禁止新增/恢复手工发版录入入口。
 
 ## 验证基线
 
-- 合并前至少通过 `scripts/run-ci-tool-checks.ps1` 与前端构建。
+- 合并前至少通过 `scripts/run-ci-tool-checks.ps1` 与 `frontend` 下 **`pnpm install --frozen-lockfile`（若需要）** + **`pnpm run build`**（与 CI / 根目录 `Dockerfile` 一致）。
 - 涉及权限、路由、管理页、分页的改动，必须给出可复现手工冒烟路径。

@@ -152,9 +152,21 @@ stack: Vue3 + Element Plus + TypeScript（前端）; FastAPI + SQLModel + Postgr
 
 ### 6.2 工具功能 API（业务端点）
 
-- 在 `app/api/v1/tools.py`（或按模块拆分的路由，再 `include_router`）增加端点。
+- 工具业务服务应暴露 `/api/v1/tools/{tool_id}/features/{feature}` 路由，并通过宿主 `TOOLBOX_TOOL_UPSTREAMS` 进行转发映射（key= `Tool.name`）。
 - **必须**在处理器内调用现有 **`ensure_tool_access`**（或等价校验），并在 **`tool.is_active`** 为 false 时拒绝普通用户（`is_superuser` 可豁免）。
 - 请求/响应模型放在 `app/schemas.py`，命名清晰。
+
+#### 6.2.1 模块化边界（硬约束：避免“工具污染宿主”）
+
+工具代码（`backend/app/tools/plugins/**`）在 import 上必须遵守：
+
+- **允许**：`app.database`、`app.models`、`app.schemas`、`app.services.*`、`app.api.v1.users`（`get_current_active_user`）、`app.api.v1.tools_common`（门禁/工具名校验/管理辅助）
+- **禁止**：`app.api.v1.admin*`、`app.api.v1.admin_common`、`app.api.v1.rbac` 等宿主管理域模块
+- **禁止**：`app.core.config_simple`（这是宿主配置入口；若确需共享运行时能力，下沉到 `app/services/*` 并由宿主与工具共同引用）
+- **MOS 遗留适配层**：`app.services.mos_legacy_toolbox_adapter` **仅允许**被 `mos-integration-toolbox` 使用；其他工具禁止依赖（该模块会动态修改 `sys.path` 并加载 `ref/toolboxweb` 历史脚本）
+- **密钥读取**：`SECRET_KEY` 的读取应优先通过 `app.services.secret_key`（或同等 `app.services.*` 小模块）封装；工具插件仍**禁止**直接 `import app.core.config_simple`，也**禁止**在插件内 `os.getenv("SECRET_KEY")` 直读
+
+重复逻辑（例如连接池调参、文件落盘规则）必须抽到 `app/services/*`，**禁止**在工具路由与宿主 `admin` 中各复制一份实现。
 
 ### 6.3 工具功能与审计日志（重要）
 
@@ -183,13 +195,13 @@ stack: Vue3 + Element Plus + TypeScript（前端）; FastAPI + SQLModel + Postgr
 
 ### 7.1 工具使用页（`/tools/:toolId`）
 
-- 扩展 `ToolDetail.vue` 或按工具拆子组件并在该页组合。
+- **不要**在 `ToolDetail.vue` 内为各工具新增 `tool.name === '...'` 分支。新工具 UI 放在独立组件（如 `frontend/src/components/tool-detail/MyToolPanel.vue`），并在 `frontend/src/tools/registry.ts` 的 `toolDetailByKey` 中注册；`ToolDetail.vue` 仅作壳层容器。
 - 调用 `toolsApi` 中对应方法（在 `frontend/src/api/tools.ts` 增加函数）。
 - **必须**处理：`403`（无权限）、工具不可用时的提示（与现网 `el-alert` 行为一致）。
 
 ### 7.2 工具管理页（`/tools/:toolId/manage`）
 
-- 「通用管理」选项卡已落地；新增工具时在本页 **`v-if` + 新 `el-tab-pane`** 或独立子组件。
+- 「通用管理」选项卡已落地；新增工具专属管理 UI 时，**不要**在 `ToolManage.vue` 内写 `tool.name` 硬编码分支。应使用独立组件 + `registry.ts` 的 `toolManageExtraTabsByKey`（或等价注册表字段）挂载新 `el-tab-pane`。
 - 顶层 tab 顺序：**工具专属管理在前，通用管理在后**。
 - 通用管理内部模块（状态/发版/授权/使用记录/反馈）建议用二级 tab。
 - 推荐将 tab 状态与分页状态写入 URL query（例如 `manageTab`、`manageGeneralTab`、`sidEntriesPage` 等），保证刷新后可恢复。
@@ -268,8 +280,8 @@ Hard constraints:
 - Tool feature HTTP paths MUST match `/api/v1/tools/{tool_id}/features/{feature}` where `{feature}` is the full path segment after `/features/` (regex `[a-zA-Z0-9_/-]+`). Single-segment slugs (e.g. `x509-cert`) and nested paths (e.g. `mos-manage/vehicle-rules/42`) are both valid; they MUST align with `backend/main.py` (`TOOL_FEATURE_REGEX`), `contracts/tool.manifest.schema.json` (`feature_slugs`, `behavior_catalog.key`), and `Tool.behavior_catalog_json` so `APIAccessLog.behavior_label` resolves correctly.
 
 Deliverables:
-1) Backend: Tool row seed, Pydantic schemas, routes using ensure_tool_access + is_active checks.
-2) Frontend: ToolDetail extension + ToolManage tab(s) + api methods.
+1) Backend: Tool row seed, Pydantic schemas, routes using ensure_tool_access + is_active checks; plugin router registered in `tools.py`.
+2) Frontend: registry-mapped detail/manage components + `tools.ts` API methods; do not add `tool.name` branches in `ToolDetail.vue` / `ToolManage.vue`.
 3) Short verification steps: build passes, manual smoke paths listed.
 
 Tool-specific requirements:
@@ -280,7 +292,7 @@ Tool-specific requirements:
 
 ## 10. 验收清单（发布前）
 
-- [ ] `npm run build`（前端）无错误。
+- [ ] `pnpm run build`（`frontend` 目录；与 CI 一致）无错误。
 - [ ] 后端可启动，核心接口无 500。
 - [ ] 新工具在「所有工具」列表可见，详情页可访问（有权限用户）。
 - [ ] `tool.is_active = false` 时非超管无法使用功能入口。

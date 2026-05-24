@@ -8,8 +8,6 @@ from app.models import (
     Tool,
     ToolOwner,
     User,
-    Role,
-    UserRole,
     PermissionStatus,
     Notification,
 )
@@ -18,6 +16,7 @@ from app.schemas import (
     SuccessResponse
 )
 from app.api.v1.users import get_current_active_user
+from app.api.v1.rbac import admin_notification_recipient_user_ids, has_role
 from app.core.tool_visibility import is_tool_visible
 
 router = APIRouter()
@@ -30,12 +29,12 @@ def _notify_pending_reviewers(
     applicant_id: int,
     applicant_name: str,
 ) -> None:
-    """通知工具负责人与超级管理员：有新的待审核申请（申请人本人除外）"""
+    """通知工具负责人、超级管理员与平台管理员：有新的待审核申请（申请人本人除外）"""
     recipients: set[int] = set()
     for o in db.exec(select(ToolOwner).where(ToolOwner.tool_id == tool.id)).all():
         recipients.add(o.user_id)
-    for u in db.exec(select(User).where(User.is_superuser == True)).all():
-        recipients.add(u.id)
+    for uid in admin_notification_recipient_user_ids(db):
+        recipients.add(uid)
     recipients.discard(applicant_id)
     for uid in recipients:
         db.add(
@@ -49,17 +48,6 @@ def _notify_pending_reviewers(
         )
     db.commit()
 
-
-def has_role(db: Session, user_id: int, role_name: str) -> bool:
-    role = db.exec(select(Role).where(Role.name == role_name)).first()
-    if not role:
-        return False
-    return db.exec(
-        select(UserRole).where(
-            UserRole.user_id == user_id,
-            UserRole.role_id == role.id
-        )
-    ).first() is not None
 
 @router.post("/apply/{tool_id}", response_model=PermissionInDB)
 async def apply_for_permission(

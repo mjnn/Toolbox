@@ -1,7 +1,7 @@
 ---
 title: MOS综合工具箱 — 数据库优化与性能验收 Runbook
 description: >-
-  沉淀本项目数据库配置优化、性能压测与发布后验收流程。覆盖 Dashboard 管理入口、
+  沉淀本项目数据库配置优化、性能压测与发布后验收流程。覆盖 Dashboard「其他配置」只读视图、
   后端关键优化点、k6 脚本与达标阈值。
 version: 1.0
 ---
@@ -24,8 +24,8 @@ version: 1.0
 
 ### 2.1 前端入口与权限
 
-- Dashboard 左侧栏新增「数据库优化」入口（仅超管可见）。
-- 页面路由为系统级页面（不再归属于某个工具管理子页）。
+- Dashboard 左侧栏 **其他配置**（路由 `/system-other-settings`，旧路径 `/system-db-optimization` 会重定向；仅超管可见）。
+- 其中 **数据库连接**区块为只读（展示当前环境、overrides、推荐值 + 连通性检测）；改参在「系统配置」编辑 `.env`（需相应权限）或维护期编辑部署机环境变量。
 - 访问控制：需要登录且管理员权限。
 
 ### 2.2 后端 API（系统级）
@@ -39,7 +39,7 @@ version: 1.0
 接口语义：
 
 - 读取当前/推荐/已保存参数与数据库连通状态信息。
-- 保存连接池和 SQL 超时参数（可选写入 `.env`，生效通常需重启）。
+- `PUT` 仍保留（自动化或紧急人工仍可调）；宿主 Dashboard 不再提供写入入口。
 - 进行数据库连通性延迟探测（ping）。
 
 ---
@@ -58,7 +58,7 @@ version: 1.0
 
 - `SQLALCHEMY_POOL_SIZE=12`
 - `SQLALCHEMY_MAX_OVERFLOW=8`
-- `SQLALCHEMY_POOL_TIMEOUT=60`
+- `SQLALCHEMY_POOL_TIMEOUT=45`
 - `SQLALCHEMY_POOL_RECYCLE=1800`
 - `SQLALCHEMY_STATEMENT_TIMEOUT_MS=15000`
 
@@ -101,7 +101,7 @@ version: 1.0
 ### 5.2 脚本清单
 
 - `perf/k6-api.js`：压测场景定义（支持环境变量控制档位）
-- `scripts/run-perf-k6.ps1`：单次压测（`baseline/stress/custom`）
+- `scripts/run-perf-k6.ps1`：单次压测（`baseline/stress/custom`）；优先 PATH 中的 `k6`，或可选 `ops\k6.exe`；默认 `BaseUrl` 为 `http://127.0.0.1:3000`
 - `scripts/report-perf-k6.ps1`：读取 summary JSON 并输出汇总/Markdown
 - `scripts/run-perf-suite.ps1`：一键执行 baseline + stress + report
 

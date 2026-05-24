@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOS 综合工具箱总体架构图</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: #f6f8fb; color: #1f2937; }
+    .wrap { max-width: 1500px; margin: 0 auto; padding: 20px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .desc { margin: 0 0 16px; color: #4b5563; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #374151; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+    .links a { margin-right: 12px; color: #2563eb; text-decoration: none; }
+    svg { width: 100%; height: 1180px; border: 1px solid #e5e7eb; border-radius: 10px; background: #ffffff; }
+    .t { font-size: 12px; fill: #111827; }
+    .tt { font-size: 13px; font-weight: 700; fill: #111827; }
+    .sub { font-size: 11px; fill: #374151; }
+    .view-switch { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .view-btn { border: 1px solid #cbd5e1; background: #fff; color: #111827; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+    .view-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .view-tip { font-size: 12px; color: #4b5563; margin: 4px 0 12px; }
+    .step-switch { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; margin-bottom: 8px; }
+    .step-btn { border: 1px solid #cbd5e1; background: #fff; color: #111827; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+    .step-btn.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+    .step-tip { font-size: 12px; color: #4b5563; margin: 4px 0 0; }
+
+    body[data-view="manager"] .sub { display: none; }
+    body[data-view="manager"] .t { font-weight: 600; }
+
+    body[data-view="ops"] .frontend-layer,
+    body[data-view="ops"] .plugin-layer { opacity: 0.22; }
+    body[data-view="ops"] .backend-layer,
+    body[data-view="ops"] .data-layer,
+    body[data-view="ops"] .docs-layer { stroke-width: 2.2; }
+
+    body[data-view="developer"] .frontend-layer,
+    body[data-view="developer"] .backend-layer,
+    body[data-view="developer"] .plugin-layer,
+    body[data-view="developer"] .data-layer,
+    body[data-view="developer"] .docs-layer { opacity: 1; }
+
+    body[data-step-mode="on"] .step-target { opacity: 0.2; transition: opacity 0.2s ease; }
+    body[data-step-mode="on"] .step-target.active { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>MOS 综合工具箱总体架构图（全面版）</h1>
+    <p class="desc">用于配合文档阅读：包含前端壳层、后端宿主、插件体系、Admin 拆分模块、数据层、运维与文档治理层。</p>
+
+    <div class="card legend">
+      <span><i class="dot" style="background:#dbeafe"></i>前端层</span>
+      <span><i class="dot" style="background:#dcfce7"></i>后端 API 层</span>
+      <span><i class="dot" style="background:#fef9c3"></i>插件与扩展层</span>
+      <span><i class="dot" style="background:#fee2e2"></i>数据与运行时层</span>
+      <span><i class="dot" style="background:#ede9fe"></i>交付与治理层</span>
+    </div>
+
+    <div class="card links">
+      <a href="./README.md">文档入口 README</a>
+      <a href="./PROJECT_ARCHITECTURE_ABSTRACT.html">抽象运行逻辑图</a>
+      <a href="./PROJECT_AND_AGENT_GUIDE.md">项目总览</a>
+      <a href="./TOOL_INTEGRATION_STANDARD.md">工具接入规范</a>
+      <a href="./ADMIN_API_MODULE_SPLIT_GUIDE.md">Admin 模块拆分说明</a>
+      <a href="./DOCS_SYSTEM_AND_GOVERNANCE.md">文档治理规范</a>
+    </div>
+
+    <div class="card">
+      <div class="view-switch">
+        <button class="view-btn active" data-view-target="developer" type="button">开发者视角</button>
+        <button class="view-btn" data-view-target="manager" type="button">管理层视角</button>
+        <button class="view-btn" data-view-target="ops" type="button">运维视角</button>
+      </div>
+      <div class="view-tip" id="viewTip">
+        当前：开发者视角（显示全部细节，适合实现和排查）。
+      </div>
+      <div class="step-switch">
+        <button class="step-btn active" data-step="all" type="button">总览</button>
+        <button class="step-btn" data-step="1" type="button">步骤1 前端入口</button>
+        <button class="step-btn" data-step="2" type="button">步骤2 宿主治理</button>
+        <button class="step-btn" data-step="3" type="button">步骤3 插件执行</button>
+        <button class="step-btn" data-step="4" type="button">步骤4 数据运行时</button>
+        <button class="step-btn" data-step="5" type="button">步骤5 文档与交付</button>
+      </div>
+      <div class="step-tip" id="stepTip">当前讲解：总览（完整展示）。</div>
+    </div>
+
+    <svg viewBox="0 0 1500 1180" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0,0 10,4 0,8" fill="#6b7280"></polygon>
+        </marker>
+      </defs>
+
+      <!-- Frontend -->
+      <rect class="frontend-layer step-target s1" x="20" y="20" width="450" height="390" rx="10" fill="#dbeafe" stroke="#93c5fd"/>
+      <text x="35" y="45" class="tt">前端层（Vue3 + TS + Element Plus）</text>
+      <text x="35" y="70" class="t">入口壳：Dashboard / Router / Pinia</text>
+      <rect x="35" y="85" width="200" height="55" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="45" y="108" class="t">`views/Dashboard.vue`</text>
+      <text x="45" y="124" class="sub">侧栏、布局、权限可见性</text>
+      <rect x="245" y="85" width="210" height="55" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="255" y="108" class="t">`router/index.ts`</text>
+      <text x="255" y="124" class="sub">路由守卫、页面入口</text>
+      <rect x="35" y="150" width="200" height="65" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="45" y="173" class="t">`views/ToolDetail.vue`</text>
+      <text x="45" y="189" class="sub">工具使用页容器</text>
+      <text x="45" y="204" class="sub">注册表驱动面板</text>
+      <rect x="245" y="150" width="210" height="65" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="255" y="173" class="t">`views/ToolManage.vue`</text>
+      <text x="255" y="189" class="sub">管理页容器</text>
+      <text x="255" y="204" class="sub">通用 + 工具扩展 Tab</text>
+      <rect x="35" y="225" width="420" height="75" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="45" y="248" class="t">`tools/registry.ts` + `api/*.ts`</text>
+      <text x="45" y="264" class="sub">tool_key -> 组件映射、API 封装、前后端契约对齐</text>
+      <text x="45" y="280" class="sub">禁止在 ToolDetail/ToolManage 写 tool.name 硬编码分支</text>
+      <rect x="35" y="310" width="420" height="80" rx="8" fill="#fff" stroke="#93c5fd"/>
+      <text x="45" y="333" class="t">其他关键页面</text>
+      <text x="45" y="349" class="sub">Tools / Users / Permissions / AuditLogs / FeedbackAdmin / Profile / Notifications</text>
+      <text x="45" y="365" class="sub">统一走 `/api/v1/*`，开发期由 Vite 代理到后端</text>
+
+      <!-- Backend Host -->
+      <rect class="backend-layer step-target s2" x="500" y="20" width="520" height="620" rx="10" fill="#dcfce7" stroke="#86efac"/>
+      <text x="515" y="45" class="tt">后端宿主层（FastAPI + SQLModel）</text>
+      <rect x="515" y="60" width="490" height="70" rx="8" fill="#fff" stroke="#86efac"/>
+      <text x="525" y="84" class="t">`backend/main.py`</text>
+      <text x="525" y="100" class="sub">应用入口、CORS、静态资源、中间件（工具功能访问日志解析）</text>
+      <text x="525" y="116" class="sub">`/health` + SPA fallback</text>
+
+      <rect x="515" y="140" width="490" height="75" rx="8" fill="#fff" stroke="#86efac"/>
+      <text x="525" y="164" class="t">`app/api/v1/api.py`（聚合路由）</text>
+      <text x="525" y="180" class="sub">auth / users / tools / permissions / admin*</text>
+      <text x="525" y="196" class="sub">admin 已按子域拆分挂载</text>
+
+      <rect x="515" y="225" width="235" height="175" rx="8" fill="#fff" stroke="#86efac"/>
+      <text x="525" y="249" class="t">核心公共模块</text>
+      <text x="525" y="267" class="sub">`tools_common.py`</text>
+      <text x="525" y="283" class="sub">- ensure_tool_access</text>
+      <text x="525" y="299" class="sub">- 工具可用性校验</text>
+      <text x="525" y="317" class="sub">`admin_common.py`</text>
+      <text x="525" y="333" class="sub">- 权限治理 helper</text>
+      <text x="525" y="349" class="sub">- reviewer / owner / recipient</text>
+
+      <rect x="760" y="225" width="245" height="175" rx="8" fill="#fff" stroke="#86efac"/>
+      <text x="770" y="249" class="t">Admin 子模块（已拆分）</text>
+      <text x="770" y="267" class="sub">`admin.py`（系统配置、公告、工具状态）</text>
+      <text x="770" y="283" class="sub">`admin_feedback.py`</text>
+      <text x="770" y="299" class="sub">`admin_audit.py`</text>
+      <text x="770" y="315" class="sub">`admin_permissions.py`</text>
+      <text x="770" y="331" class="sub">`admin_tool_access.py`</text>
+      <text x="770" y="347" class="sub">`admin_releases.py`</text>
+      <text x="770" y="363" class="sub">`admin_users.py`</text>
+
+      <rect x="515" y="410" width="490" height="210" rx="8" fill="#fff" stroke="#86efac"/>
+      <text x="525" y="434" class="t">核心模型与服务</text>
+      <text x="525" y="452" class="sub">`models.py` / `schemas.py` / `database.py`</text>
+      <text x="525" y="468" class="sub">权限、工具、日志、通知、反馈、公告、角色、负责人、发布记录</text>
+      <text x="525" y="486" class="sub">`services/tool_behavior_catalog.py`：行为标签解析</text>
+      <text x="525" y="504" class="sub">`core/tool_visibility.py`：内外网可见性策略</text>
+      <text x="525" y="522" class="sub">`core/config_simple.py`：环境配置读取</text>
+      <text x="525" y="540" class="sub">Admin 系统配置接口：db optimization / env-file / restart</text>
+      <text x="525" y="558" class="sub">用户治理接口：审批、角色、导入、重置密码、删除</text>
+      <text x="525" y="576" class="sub">工具治理接口：状态、展示配置、版本同步、可见性治理</text>
+
+      <!-- Plugin layer -->
+      <rect class="plugin-layer step-target s3" x="1040" y="20" width="440" height="390" rx="10" fill="#fef9c3" stroke="#fde047"/>
+      <text x="1055" y="45" class="tt">插件扩展层（工具业务域）</text>
+      <rect x="1055" y="65" width="410" height="90" rx="8" fill="#fff" stroke="#fde047"/>
+      <text x="1065" y="88" class="t">`app/tools/plugins/*/routes.py`</text>
+      <text x="1065" y="104" class="sub">业务功能路由统一形态：</text>
+      <text x="1065" y="120" class="sub">`/api/v1/tools/{tool_id}/features/{feature}`</text>
+      <text x="1065" y="136" class="sub">由中间件记录 APIAccessLog 并解析行为名</text>
+      <rect x="1055" y="165" width="410" height="80" rx="8" fill="#fff" stroke="#fde047"/>
+      <text x="1065" y="188" class="t">`tool.manifest.json` + `contracts/tool.manifest.schema.json`</text>
+      <text x="1065" y="204" class="sub">feature_slugs / behavior_catalog 与路由同源</text>
+      <text x="1065" y="220" class="sub">CI 脚本做 schema 与边界检查</text>
+      <rect x="1055" y="255" width="410" height="140" rx="8" fill="#fff" stroke="#fde047"/>
+      <text x="1065" y="278" class="t">当前插件示例</text>
+      <text x="1065" y="296" class="sub">- service_id_registry</text>
+      <text x="1065" y="312" class="sub">- mos_integration_toolbox</text>
+      <text x="1065" y="328" class="sub">- rsa_token_livestream</text>
+      <text x="1065" y="346" class="sub">新增插件原则：优先改插件目录 + registry，少改宿主</text>
+      <text x="1065" y="362" class="sub">管理页能力优先通过 admin 子域复用，不重复造治理逻辑</text>
+
+      <!-- Data/runtime -->
+      <rect class="data-layer step-target s4" x="20" y="430" width="1460" height="250" rx="10" fill="#fee2e2" stroke="#fca5a5"/>
+      <text x="35" y="455" class="tt">数据与运行时层</text>
+      <rect x="35" y="470" width="470" height="190" rx="8" fill="#fff" stroke="#fca5a5"/>
+      <text x="45" y="494" class="t">数据库（PostgreSQL 标准 / SQLite 开发快捷）</text>
+      <text x="45" y="512" class="sub">核心表：User / Role / UserRole / Tool / ToolOwner / UserToolPermission</text>
+      <text x="45" y="528" class="sub">治理表：APIAccessLog / Notification / Feedback / ToolAnnouncement / ToolRelease</text>
+      <text x="45" y="546" class="sub">配置：tool_visibility.json / db_optimization.json / .env</text>
+      <text x="45" y="564" class="sub">种子与轻迁移：`database.py`</text>
+      <text x="45" y="582" class="sub">行为目录：Tool.behavior_catalog_json 与 manifest 同步</text>
+
+      <rect x="520" y="470" width="460" height="190" rx="8" fill="#fff" stroke="#fca5a5"/>
+      <text x="530" y="494" class="t">运行形态</text>
+      <text x="530" y="512" class="sub">开发：`start-dev.cmd`（前端3000 + 后端3001）</text>
+      <text x="530" y="528" class="sub">便携：PyInstaller + `release/toolbox-portable`</text>
+      <text x="530" y="544" class="sub">ECS：容器部署，代理/LB 按 runbook</text>
+      <text x="530" y="562" class="sub">发布前检查：manifest + boundary + frontend build</text>
+      <text x="530" y="580" class="sub">性能与池化参数：db optimization 系统接口 + .env</text>
+
+      <rect x="995" y="470" width="470" height="190" rx="8" fill="#fff" stroke="#fca5a5"/>
+      <text x="1005" y="494" class="t">可观测与治理闭环</text>
+      <text x="1005" y="512" class="sub">访问日志（功能级）、反馈、通知、权限审核、工具状态、版本同步</text>
+      <text x="1005" y="528" class="sub">内外网可见性：Host + 环境变量 + Admin 持久化配置</text>
+      <text x="1005" y="544" class="sub">Admin 拆分后每个子域可独立演进与回归测试</text>
+      <text x="1005" y="560" class="sub">文档治理规则确保“代码与文档同源更新”</text>
+
+      <!-- Docs/governance -->
+      <rect class="docs-layer step-target s5" x="20" y="700" width="1460" height="460" rx="10" fill="#ede9fe" stroke="#c4b5fd"/>
+      <text x="35" y="725" class="tt">文档与治理层（收敛后）</text>
+      <rect x="35" y="740" width="470" height="190" rx="8" fill="#fff" stroke="#c4b5fd"/>
+      <text x="45" y="764" class="t">统一入口与核心规范</text>
+      <text x="45" y="782" class="sub">`docs/README.md`：唯一导航入口</text>
+      <text x="45" y="798" class="sub">`PROJECT_AND_AGENT_GUIDE.md`：项目总览</text>
+      <text x="45" y="814" class="sub">`TOOL_INTEGRATION_STANDARD.md`：工具接入硬约束</text>
+      <text x="45" y="830" class="sub">`DOCS_SYSTEM_AND_GOVERNANCE.md`：文档治理规则</text>
+      <text x="45" y="848" class="sub">冲突处理：代码/Schema > 核心规范 > runbook/template</text>
+
+      <rect x="520" y="740" width="460" height="190" rx="8" fill="#fff" stroke="#c4b5fd"/>
+      <text x="530" y="764" class="t">运行手册与交付规范</text>
+      <text x="530" y="782" class="sub">便携打包、发布、ECS、性能、可见性 runbook</text>
+      <text x="530" y="798" class="sub">`AGENT_CONTINUOUS_DELIVERY_AND_OPS_GUIDE.md`</text>
+      <text x="530" y="814" class="sub">`FINAL_CLOSURE_PR_CHECKLIST.md`（收官执行清单）</text>
+      <text x="530" y="830" class="sub">`ADMIN_API_MODULE_SPLIT_GUIDE.md` + `ADMIN_API_NEW_MODULE_TEMPLATE.md`</text>
+
+      <rect x="995" y="740" width="470" height="190" rx="8" fill="#fff" stroke="#c4b5fd"/>
+      <text x="1005" y="764" class="t">模板与任务化协作</text>
+      <text x="1005" y="782" class="sub">`docs/templates/*`：新工具与能力模板</text>
+      <text x="1005" y="798" class="sub">Cursor 规则：`.cursor/rules/*.mdc`</text>
+      <text x="1005" y="814" class="sub">约束：优先插件化扩展、分页硬约束、中文可见文案</text>
+      <text x="1005" y="830" class="sub">持续开发策略：小步改造 + 每步可验证 + 可回滚</text>
+
+      <rect x="35" y="940" width="1430" height="205" rx="8" fill="#fff" stroke="#c4b5fd"/>
+      <text x="45" y="964" class="t">推荐阅读与执行顺序（新成员 / 新 Agent）</text>
+      <text x="45" y="984" class="sub">1) README -> 2) PROJECT_AND_AGENT_GUIDE -> 3) TOOL_INTEGRATION_STANDARD -> 4) AGENT_CONTINUOUS_DELIVERY_AND_OPS_GUIDE</text>
+      <text x="45" y="1002" class="sub">5) ADMIN_API_MODULE_SPLIT_GUIDE -> 6) 具体 runbook（按任务选择）-> 7) 模板化执行 + 校验脚本</text>
+      <text x="45" y="1022" class="sub">代码改动后最小验证：`python -m compileall` + `scripts/run-ci-tool-checks.ps1` + `frontend pnpm run build`</text>
+      <text x="45" y="1042" class="sub">架构原则：宿主负责治理与门禁，插件负责业务能力；admin 子域模块化，shared helper 统一复用。</text>
+
+      <!-- arrows -->
+      <line class="step-target s1 s2" x1="470" y1="210" x2="500" y2="210" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+      <line class="step-target s2 s3" x1="1020" y1="210" x2="1040" y2="210" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+      <line class="step-target s4 s5" x1="760" y1="640" x2="760" y2="700" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+      <line class="step-target s1 s4" x1="250" y1="410" x2="250" y2="430" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+      <line class="step-target s3 s4" x1="1230" y1="410" x2="1230" y2="430" stroke="#6b7280" stroke-width="2" marker-end="url(#arrow)"/>
+    </svg>
+  </div>
+  <script>
+    (function () {
+      var tips = {
+        developer: "当前：开发者视角（显示全部细节，适合实现和排查）。",
+        manager: "当前：管理层视角（隐藏细节文本，突出全局结构与治理主线）。",
+        ops: "当前：运维视角（高亮后端/数据/文档治理，弱化前端与插件细节）。"
+      };
+      var buttons = Array.prototype.slice.call(document.querySelectorAll(".view-btn"));
+      var tipNode = document.getElementById("viewTip");
+      function setView(view) {
+        document.body.setAttribute("data-view", view);
+        buttons.forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-view-target") === view);
+        });
+        if (tipNode) tipNode.textContent = tips[view] || "";
+      }
+      buttons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setView(btn.getAttribute("data-view-target") || "developer");
+        });
+      });
+      setView("developer");
+    })();
+    (function () {
+      var stepTips = {
+        all: "当前讲解：总览（完整展示）。",
+        "1": "步骤1：前端入口与页面容器发起请求，统一进入 API。",
+        "2": "步骤2：后端宿主做鉴权、编排与治理逻辑处理。",
+        "3": "步骤3：插件层承接业务特性，实现具体工具能力。",
+        "4": "步骤4：运行状态和治理事件沉淀到数据与运行时层。",
+        "5": "步骤5：文档与交付层固化流程，支持持续开发与运维。"
+      };
+      var stepButtons = Array.prototype.slice.call(document.querySelectorAll(".step-btn"));
+      var stepTargets = Array.prototype.slice.call(document.querySelectorAll(".step-target"));
+      var stepTipNode = document.getElementById("stepTip");
+      function setStep(step) {
+        if (step === "all") {
+          document.body.removeAttribute("data-step-mode");
+          stepTargets.forEach(function (node) { node.classList.remove("active"); });
+        } else {
+          document.body.setAttribute("data-step-mode", "on");
+          stepTargets.forEach(function (node) {
+            node.classList.toggle("active", node.classList.contains("s" + step));
+          });
+        }
+        stepButtons.forEach(function (btn) {
+          btn.classList.toggle("active", btn.getAttribute("data-step") === step);
+        });
+        if (stepTipNode) stepTipNode.textContent = stepTips[step] || stepTips.all;
+      }
+      stepButtons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          setStep(btn.getAttribute("data-step") || "all");
+        });
+      });
+      setStep("all");
+    })();
+  </script>
+</body>
+</html>

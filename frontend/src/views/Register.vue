@@ -13,34 +13,37 @@
         class="register-form"
         @submit.prevent="handleRegister"
       >
-        <el-form-item prop="username">
+        <el-form-item prop="username" label="用户名">
           <el-input
             v-model="formData.username"
             placeholder="用户名"
             size="large"
             :prefix-icon="User"
+            autocomplete="username"
           />
         </el-form-item>
         
-        <el-form-item prop="email">
+        <el-form-item prop="email" label="邮箱">
           <el-input
             v-model="formData.email"
             placeholder="邮箱"
             size="large"
             :prefix-icon="Message"
+            autocomplete="email"
           />
         </el-form-item>
         
-        <el-form-item prop="fullName">
+        <el-form-item prop="fullName" label="姓名">
           <el-input
             v-model="formData.fullName"
             placeholder="姓名"
             size="large"
             :prefix-icon="User"
+            autocomplete="name"
           />
         </el-form-item>
 
-        <el-form-item prop="department">
+        <el-form-item prop="department" label="部门">
           <el-input
             v-model="formData.department"
             placeholder="部门"
@@ -91,7 +94,7 @@
           />
         </el-form-item>
         
-        <el-form-item prop="password">
+        <el-form-item prop="password" label="密码">
           <el-input
             v-model="formData.password"
             type="password"
@@ -99,10 +102,11 @@
             size="large"
             :prefix-icon="Lock"
             show-password
+            autocomplete="new-password"
           />
         </el-form-item>
         
-        <el-form-item prop="confirmPassword">
+        <el-form-item prop="confirmPassword" label="确认密码">
           <el-input
             v-model="formData.confirmPassword"
             type="password"
@@ -110,6 +114,7 @@
             size="large"
             :prefix-icon="Lock"
             show-password
+            autocomplete="new-password"
           />
         </el-form-item>
         
@@ -142,6 +147,7 @@ import { authApi } from '@/api/auth'
 import { toolsApi } from '@/api/tools'
 import type { ToolInDB } from '@/api/types'
 import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
+import { getFriendlyApiErrorMessage } from '@/utils/apiError'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -218,28 +224,6 @@ const formRules: FormRules = {
   ]
 }
 
-// 错误消息映射（英文 -> 中文）
-const errorMessageMap: Record<string, string> = {
-  'Username already registered': '用户名已被注册',
-  'Email already registered': '邮箱已被注册',
-  'Password must be at least 8 characters': '密码必须至少8个字符',
-  'Incorrect username or password': '用户名或密码错误'
-}
-
-const getFriendlyErrorMessage = (error: any): string => {
-  const message = error.message || ''
-  
-  // 查找映射表中的错误消息
-  for (const [key, value] of Object.entries(errorMessageMap)) {
-    if (message.includes(key)) {
-      return value
-    }
-  }
-  
-  // 如果没有匹配，返回原始消息
-  return message || '注册失败'
-}
-
 const buildToolOptionLabel = (tool: ToolInDB): string => {
   const displayName = resolveToolDisplayName(tool.name, tool.display_name)
   const desc = resolveToolDisplayDescription(tool.description, tool.display_description)
@@ -274,7 +258,7 @@ const handleRegister = async () => {
     router.push('/login')
   } catch (error: any) {
     console.error('注册失败:', error)
-    const friendlyMessage = getFriendlyErrorMessage(error)
+    const friendlyMessage = getFriendlyApiErrorMessage(error, '注册失败')
     ElMessage.error(friendlyMessage)
   } finally {
     loading.value = false
@@ -284,7 +268,9 @@ const handleRegister = async () => {
 const loadToolsForRegistration = async () => {
   try {
     const rows = await toolsApi.getTools(0, 500)
-    toolOptions.value = rows.filter((tool) => tool.is_active)
+    toolOptions.value = rows.filter(
+      (tool) => tool.is_active && tool.runtime_status !== 'updating'
+    )
   } catch {
     toolOptions.value = []
   }
@@ -301,11 +287,12 @@ onMounted(() => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  padding: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .register-card {
-  width: 450px;
+  width: min(450px, 100%);
   padding: 40px;
   background: white;
   border-radius: 12px;
@@ -332,6 +319,10 @@ onMounted(() => {
   margin-bottom: 22px;
 }
 
+.register-form :deep(.el-form-item__label) {
+  font-weight: 600;
+}
+
 .register-btn {
   width: 100%;
   margin-top: 10px;
@@ -343,5 +334,27 @@ onMounted(() => {
   display: flex;
   justify-content: center;
   margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .register-card {
+    padding: 24px 18px;
+    border-radius: 10px;
+  }
+
+  .logo {
+    margin-bottom: 20px;
+  }
+
+  .logo h1 {
+    font-size: 22px;
+  }
+
+  .register-form :deep(.el-radio-group) {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
 }
 </style>

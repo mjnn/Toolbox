@@ -1,21 +1,58 @@
-# config_simple.py — 从 backend/.env 加载配置（DATABASE_URL、JWT、首个超管等）
+# config_simple.py — 从 .env 加载配置（DATABASE_URL、JWT、首个超管等）
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
-_backend_root = Path(__file__).resolve().parent.parent.parent
-_env_path = _backend_root / ".env"
-if _env_path.is_file():
-    from dotenv import load_dotenv
 
-    load_dotenv(_env_path)
+def _resolve_backend_root() -> Path:
+    """源码 / Docker：backend 目录；PyInstaller：与 toolbox-backend.exe 同目录（便携包根）。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _load_dotenv_first_match() -> None:
+    """按优先级加载第一个存在的 .env（override=False，不覆盖已在进程/编排里注入的变量）。"""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+
+    backend_root = _resolve_backend_root()
+    candidates: list[Path] = []
+    explicit = (os.getenv("TOOLBOX_BACKEND_ENV_FILE") or "").strip()
+    if explicit:
+        candidates.append(Path(explicit))
+    candidates.append(Path.cwd() / ".env")
+    candidates.append(backend_root / ".env")
+
+    seen: set[str] = set()
+    for raw in candidates:
+        try:
+            p = raw.resolve()
+        except OSError:
+            p = raw
+        key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        if p.is_file():
+            load_dotenv(p, override=False)
+            break
+
+
+_load_dotenv_first_match()
+
+_backend_root = _resolve_backend_root()
 
 # API 配置
 API_V1_STR = "/api/v1"
 PROJECT_NAME = "Tools Platform"
+
 
 def _parse_cors_origins(raw: str | None) -> list[str]:
     default = ["http://localhost:5173", "http://localhost:3000"]
@@ -46,6 +83,7 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
 # CORS — 支持 JSON 数组字符串，兼容非严格数组格式输入
 BACKEND_CORS_ORIGINS = _parse_cors_origins(os.getenv("BACKEND_CORS_ORIGINS"))
 
+
 def _allow_dev_sqlite() -> bool:
     return os.getenv("TOOLBOX_ALLOW_SQLITE_DEV", "").strip().lower() in ("1", "true", "yes")
 
@@ -57,8 +95,13 @@ def _normalize_database_url(raw: str) -> str:
             # 开发便捷模式：允许在 start-dev 场景下免配置直连本地 SQLite。
             return "sqlite:///./app.db"
         raise RuntimeError(
-            "DATABASE_URL 未设置。请在 backend/.env 中配置 PostgreSQL，例如：\n"
-            "  DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname"
+            "DATABASE_URL 未设置。请在以下任一位置配置 PostgreSQL，例如：\n"
+            "  DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname\n"
+            "  - 进程环境变量（Docker Compose / systemd）\n"
+            "  - 当前工作目录下的 .env\n"
+            "  - 与可执行文件同目录的 .env（便携包）\n"
+            "  - backend/.env（源码开发）\n"
+            "  - 或设置 TOOLBOX_BACKEND_ENV_FILE 指向 .env 绝对路径"
         )
     low = u.lower()
     if low.startswith("sqlite"):

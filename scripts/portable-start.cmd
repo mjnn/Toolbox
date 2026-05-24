@@ -1,8 +1,8 @@
 @echo off
 setlocal
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1"
-if errorlevel 1 (
-  echo.
-  echo Startup failed. See logs folder.
+if exist "%~dp0start-split.ps1" (
+  start "" /b powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0start-split.ps1"
+) else (
+  start "" /b powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0start.ps1"
 )
-pause
+exit /b 0

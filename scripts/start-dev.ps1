@@ -39,9 +39,9 @@ if ($env:TOOLBOX_FRONTEND_PORT) {
 
 $venvPython = Join-Path $Backend ".venv\Scripts\python.exe"
 if ($Database -eq "sqlite") {
-    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='1'; `$env:DATABASE_URL='sqlite:///./app.db'; "
+    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='1'; `$env:DATABASE_URL='sqlite:///./app.db'; `$env:TOOLBOX_LOAD_TOOL_PLUGINS='all'; "
 } else {
-    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='0'; "
+    $backendEnvCmd = "`$env:TOOLBOX_ALLOW_SQLITE_DEV='0'; `$env:TOOLBOX_LOAD_TOOL_PLUGINS='all'; "
 }
 if (Test-Path $venvPython) {
     $backendCmd = "$backendEnvCmd& '$venvPython' -m uvicorn main:app --reload --host 127.0.0.1 --port $BackendPort"

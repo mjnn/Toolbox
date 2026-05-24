@@ -1,12 +1,14 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$BaseUrl = "http://127.0.0.1:3001",
+  [string]$BaseUrl = "http://127.0.0.1:3000",
   [Parameter(Mandatory = $true)]
   [string]$Token,
   [Parameter(Mandatory = $false)]
   [string]$ToolId = "",
   [Parameter(Mandatory = $false)]
   [string]$OutJson = "",
+  [Parameter(Mandatory = $false)]
+  [string]$K6Path = "",
   [Parameter(Mandatory = $false)]
   [ValidateSet("baseline", "stress", "custom")]
   [string]$Profile = "stress",
@@ -30,14 +32,23 @@ if (-not (Test-Path $scriptPath)) {
 }
 
 function Resolve-K6Binary {
+  param([string]$ExplicitK6Path)
+  if ($ExplicitK6Path -and (Test-Path -LiteralPath $ExplicitK6Path)) {
+    return (Resolve-Path -LiteralPath $ExplicitK6Path).Path
+  }
+  $portableRoot = Split-Path -Parent $PSScriptRoot
+  $bundled = Join-Path $portableRoot "ops\k6.exe"
+  if (Test-Path -LiteralPath $bundled) {
+    return (Resolve-Path -LiteralPath $bundled).Path
+  }
   $k6FromPath = Get-Command "k6" -ErrorAction SilentlyContinue
   if ($k6FromPath) { return $k6FromPath.Source }
   $fallback = Join-Path $env:ProgramFiles "k6\k6.exe"
-  if (Test-Path $fallback) { return $fallback }
-  throw "k6 not found in PATH or Program Files."
+  if (Test-Path -LiteralPath $fallback) { return $fallback }
+  throw "k6 not found. Expected portable ops\k6.exe (rebuild with network) or k6 in PATH."
 }
 
-$k6Bin = Resolve-K6Binary
+$k6Bin = Resolve-K6Binary -ExplicitK6Path $K6Path
 
 if ($Profile -eq "baseline") {
   $StartVus = 1

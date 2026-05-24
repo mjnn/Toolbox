@@ -19,7 +19,10 @@ alwaysApply: false
 - 服务层：工具薄封装层调用 `backend/app/services/dynamic_form_fields.py` 通用核心。
 - 前端：优先复用
   - `frontend/src/components/form-config/DynamicFieldInputs.vue`
-  - `frontend/src/components/form-config/FieldConfigManagerTable.vue`
+  - `frontend/src/components/form-config/FieldConfigManagerTable.vue`（`text/textarea` 行内允许值；`single_select/multi_select` 用弹窗；可选 `#selectOptionsEditor` 插槽覆盖默认 `SelectOptionValuesEditor`）
+  - `frontend/src/components/form-config/SelectOptionValuesEditor.vue`（静态选项默认实现）
+  - Service ID 规则库 UI：`frontend/src/components/tool-manage/ServiceIdRuleCategoryEditor.vue`（由 `ServiceIdRegistryManageTab` 通过插槽接入，勿再单独做「规则治理」整页表格复制）
+- 约定快照：`.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`
 - 类型：优先复用 `frontend/src/api/types.ts` 中 `FormField*` 与 `DynamicFormValues`。
 
 ## 反例（不要做）

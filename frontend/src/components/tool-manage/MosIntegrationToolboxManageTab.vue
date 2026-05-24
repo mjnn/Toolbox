@@ -19,24 +19,26 @@
             :closable="false"
             style="margin-bottom: 12px"
           />
-          <el-table :data="vehicleRules" v-loading="loadingRules" stripe>
-            <el-table-column prop="rule_index" label="#" width="70" />
-            <el-table-column label="项目" min-width="200">
-              <template #default="scope">{{ scope.row['项目版本号'] || '—' }}</template>
-            </el-table-column>
-            <el-table-column label="推荐软件版本模式" min-width="260" show-overflow-tooltip>
-              <template #default="scope">
-                {{ Array.isArray(scope.row['车机软件版本号']) ? scope.row['车机软件版本号'].join('，') : '—' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
-              <template #default="scope">
-                <el-button type="primary" size="small" link @click="openEditRule(scope.row)">编辑</el-button>
-                <el-button type="primary" size="small" link @click="openCloneRule(scope.row)">复制</el-button>
-                <el-button type="danger" size="small" link @click="removeRule(scope.row.rule_index)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="table-scroll">
+            <el-table :data="vehicleRules" v-loading="loadingRules" stripe>
+              <el-table-column prop="rule_index" label="#" width="70" />
+              <el-table-column label="项目" min-width="200">
+                <template #default="scope">{{ scope.row['项目版本号'] || '—' }}</template>
+              </el-table-column>
+              <el-table-column label="推荐软件版本模式" min-width="260" show-overflow-tooltip>
+                <template #default="scope">
+                  {{ Array.isArray(scope.row['车机软件版本号']) ? scope.row['车机软件版本号'].join('，') : '—' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="scope">
+                  <el-button type="primary" size="small" link @click="openEditRule(scope.row)">编辑</el-button>
+                  <el-button type="primary" size="small" link @click="openCloneRule(scope.row)">复制</el-button>
+                  <el-button type="danger" size="small" link @click="removeRule(scope.row.rule_index)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
           <div class="table-pagination">
             <el-pagination
               background
@@ -112,15 +114,17 @@
               <el-button @click="loadChangeLogs">刷新</el-button>
             </div>
           </template>
-          <el-table :data="changeLogs" v-loading="loadingChangeLogs" stripe>
-            <el-table-column label="时间" width="180">
-              <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
-            </el-table-column>
-            <el-table-column prop="changed_by_name" label="操作人" width="120" />
-            <el-table-column prop="target" label="对象" width="180" />
-            <el-table-column prop="action" label="动作" width="120" />
-            <el-table-column prop="summary" label="说明" min-width="240" show-overflow-tooltip />
-          </el-table>
+          <div class="table-scroll">
+            <el-table :data="changeLogs" v-loading="loadingChangeLogs" stripe>
+              <el-table-column label="时间" width="180">
+                <template #default="scope">{{ formatDate(scope.row.created_at) }}</template>
+              </el-table-column>
+              <el-table-column prop="changed_by_name" label="操作人" width="120" />
+              <el-table-column prop="target" label="对象" width="180" />
+              <el-table-column prop="action" label="动作" width="120" />
+              <el-table-column prop="summary" label="说明" min-width="240" show-overflow-tooltip />
+            </el-table>
+          </div>
           <div class="table-pagination">
             <el-pagination
               background
@@ -426,20 +430,22 @@
         <div class="bulk-summary">
           总数：{{ bulkPreview.total || 0 }}，有效：{{ bulkPreview.valid_count || 0 }}，无效：{{ bulkPreview.invalid_count || 0 }}
         </div>
-        <el-table :data="bulkPreview.items || []" stripe size="small" max-height="280">
-          <el-table-column prop="index" label="#" width="60" />
-          <el-table-column label="项目" min-width="180">
-            <template #default="scope">{{ scope.row.project || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="校验结果" width="100">
-            <template #default="scope">
-              <el-tag :type="scope.row.valid ? 'success' : 'danger'">{{ scope.row.valid ? '通过' : '失败' }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="错误信息" min-width="320" show-overflow-tooltip>
-            <template #default="scope">{{ (scope.row.errors || []).join('；') || '—' }}</template>
-          </el-table-column>
-        </el-table>
+        <div class="table-scroll">
+          <el-table :data="bulkPreview.items || []" stripe size="small" max-height="280">
+            <el-table-column prop="index" label="#" width="60" />
+            <el-table-column label="项目" min-width="180">
+              <template #default="scope">{{ scope.row.project || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="校验结果" width="100">
+              <template #default="scope">
+                <el-tag :type="scope.row.valid ? 'success' : 'danger'">{{ scope.row.valid ? '通过' : '失败' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="错误信息" min-width="320" show-overflow-tooltip>
+              <template #default="scope">{{ (scope.row.errors || []).join('；') || '—' }}</template>
+            </el-table-column>
+          </el-table>
+        </div>
       </div>
       <template #footer>
         <el-button @click="bulkImportVisible = false">关闭</el-button>
@@ -1110,7 +1116,7 @@ const onModuleTabChange = (value: string) => {
 .hint {
   margin-top: 6px;
   font-size: 12px;
-  color: #909399;
+  color: #606266;
 }
 
 .prnr-actions {
@@ -1136,5 +1142,31 @@ const onModuleTabChange = (value: string) => {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .header-row,
+  .header-actions,
+  .bulk-actions {
+    flex-wrap: wrap;
+  }
+
+  .table-pagination {
+    justify-content: flex-start;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-date-editor),
+  :deep(.el-input-number),
+  :deep(.el-textarea) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 </style>

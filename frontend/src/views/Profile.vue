@@ -509,7 +509,7 @@ const confirmDeleteAccount = async () => {
 }
 
 .avatar-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
 }
 
@@ -518,7 +518,7 @@ const confirmDeleteAccount = async () => {
 }
 
 .danger-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 16px;
   line-height: 1.5;

@@ -116,7 +116,7 @@ const submit = async () => {
 
 <style scoped>
 .dialog-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 12px;
 }

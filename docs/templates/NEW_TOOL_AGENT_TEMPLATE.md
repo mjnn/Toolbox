@@ -85,11 +85,11 @@ _REPLACE_CONSTRAINTS_
 3. **必读**：[功能/安全/UI 规范 `docs/TOOL_INTEGRATION_STANDARD.md`](../TOOL_INTEGRATION_STANDARD.md)、契约 [`contracts/tool.manifest.schema.json`](../../contracts/tool.manifest.schema.json)。
 4. **后端**（实现阶段）
    - 新建 `backend/app/tools/plugins/<plugin_folder>/tool.manifest.json`（`feature_slugs` 与实现一致）。
-   - 新建 `backend/app/tools/plugins/<plugin_folder>/routes.py` 并在 [`backend/app/api/v1/tools.py`](../../backend/app/api/v1/tools.py) `include_router`。
+  - 新建工具服务 `routes.py`，对外提供 `/api/v1/tools/{tool_id}/features/...`；在宿主环境配置 `TOOLBOX_TOOL_UPSTREAMS` 映射到该服务。
    - 鉴权与工具名校验同其它插件；新模型放在 [`backend/app/schemas.py`](../../backend/app/schemas.py)（或项目约定的拆分位置）。
    - 若 §一要求种子数据：扩展 [`backend/app/database.py`](../../backend/app/database.py)。
 5. **前端**（当 §一需要 UI 时）：组件 + [`frontend/src/tools/registry.ts`](../../frontend/src/tools/registry.ts)；API 封装 [`frontend/src/api/tools.ts`](../../frontend/src/api/tools.ts)。**禁止**在 `ToolDetail.vue` / `ToolManage.vue` 写死 `tool.name ===`。
-6. **验收**：仓库根 `powershell -NoProfile -File scripts/run-ci-tool-checks.ps1`；`frontend` 下 `npm run build`；后端可执行 `python -m compileall app` 或冒烟。
+6. **验收**：仓库根 `powershell -NoProfile -File scripts/run-ci-tool-checks.ps1`；`frontend` 下 `pnpm install --frozen-lockfile`（若需要）与 `pnpm run build`；后端可执行 `python -m compileall app` 或冒烟。
    - 管理页遵循：**工具专属 tab 在前，通用管理 tab 在后**；通用管理内部建议二级 tab。
    - 若工具专属 tab 内还有多个模块（如规则/配置/日志），也应继续使用二级 tab。
    - 涉及列表时必须后端分页（`skip/limit + total/items`）；建议将 tab/分页状态同步 URL query，刷新后可恢复。
@@ -115,7 +115,7 @@ _REPLACE_CONSTRAINTS_
 ## 五、完成后 Agent 勾选
 
 - [ ] `tool.manifest.json` 与实现一致且通过 `scripts/validate_tool_manifests.py`
-- [ ] `tools.py` 已 `include_router`
+- [ ] 宿主 `TOOLBOX_TOOL_UPSTREAMS` 已配置当前工具 `Tool.name` 映射
 - [ ] `registry.ts` 已注册（若需 UI）
 - [ ] 列表/日志等分页符合规范
-- [ ] 已运行 `scripts/run-ci-tool-checks.ps1` 与前端 `npm run build`
+- [ ] 已运行 `scripts/run-ci-tool-checks.ps1` 与前端 `pnpm run build`

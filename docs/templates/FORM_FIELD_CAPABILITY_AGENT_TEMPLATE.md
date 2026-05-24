@@ -7,10 +7,12 @@
 
 必须先阅读并遵守：
 - docs/FORM_FIELD_CONFIG_MODULE.md
+- .docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md（字段配置表弹窗/插槽与 Service ID 规则接线）
 - backend/app/services/dynamic_form_fields.py
 - backend/app/services/service_id_dynamic_fields.py
 - frontend/src/components/form-config/DynamicFieldInputs.vue
 - frontend/src/components/form-config/FieldConfigManagerTable.vue
+- frontend/src/components/form-config/SelectOptionValuesEditor.vue（单选/多选静态选项默认编辑器）
 
 需求识别：
 - 只要涉及新增/删除字段、字段类型（单选/多选/填空/长文本）、字段校验规则、动态表单渲染，都按字段配置能力实现。
@@ -34,5 +36,5 @@
 3) 明确列出复用了哪些既有模块。
 4) 完成后执行并汇报：
    - powershell -File scripts/run-ci-tool-checks.ps1
-   - frontend 下 npm run build
+   - frontend 下 `pnpm install --frozen-lockfile`（若需要）与 `pnpm run build`
 ```

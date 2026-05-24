@@ -38,6 +38,8 @@ from app.schemas import (
     ServiceIdFieldConfigUpdateRequest,
     ServiceIdFieldConfigCreateRequest,
     ServiceIdFieldConfigDeleteRequest,
+    ServiceIdExportConfigResponse,
+    ServiceIdExportConfigUpdateRequest,
 )
 from app.api.v1.users import get_current_active_user
 from app.api.v1.tools_common import (
@@ -46,8 +48,10 @@ from app.api.v1.tools_common import (
     ensure_service_id_registry_tool,
     can_manage_all_records,
     ensure_manage_permission,
+    ensure_tool_operational_for_user,
 )
 from app.services import service_id_dynamic_fields as dynamic_fields
+from app.services import service_id_export as sid_export
 
 router = APIRouter()
 
@@ -55,8 +59,7 @@ _PACKAGE_NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_.]*$")
 
 
 def _ensure_tool_feature_access(db: Session, current_user: User, tool: Tool) -> None:
-    if not tool.is_active and not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="工具暂不可用")
+    ensure_tool_operational_for_user(current_user, tool)
     ensure_tool_access(db, current_user, tool.id)
 
 
@@ -653,6 +656,56 @@ async def update_service_id_field_configs(
     return await list_service_id_field_configs(tool_id=tool_id, current_user=current_user, db=db)
 
 
+@router.get("/{tool_id}/features/service-id-export-config", response_model=ServiceIdExportConfigResponse)
+async def get_service_id_export_config(
+    tool_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+    return ServiceIdExportConfigResponse.model_validate(sid_export.build_export_config_response(db, tool_id))
+
+
+@router.put("/{tool_id}/features/service-id-export-config", response_model=ServiceIdExportConfigResponse)
+async def update_service_id_export_config(
+    tool_id: int,
+    body: ServiceIdExportConfigUpdateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+    sid_export.upsert_export_columns(
+        db,
+        tool_id,
+        [c.model_dump() for c in body.columns],
+        current_user.id,
+    )
+    return ServiceIdExportConfigResponse.model_validate(sid_export.build_export_config_response(db, tool_id))
+
+
+@router.delete("/{tool_id}/features/service-id-export-config", response_model=ServiceIdExportConfigResponse)
+async def reset_service_id_export_config(
+    tool_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    tool = get_tool_or_404(db, tool_id)
+    ensure_service_id_registry_tool(tool)
+    _ensure_tool_feature_access(db, current_user, tool)
+    ensure_manage_permission(db, current_user, tool_id)
+    row = sid_export.get_saved_export_columns_row(db, tool_id)
+    if row:
+        db.delete(row)
+        db.commit()
+    return ServiceIdExportConfigResponse.model_validate(sid_export.build_export_config_response(db, tool_id))
+
+
 @router.get("/{tool_id}/features/service-id-export")
 async def export_service_id_entries(
     tool_id: int,
@@ -672,51 +725,18 @@ async def export_service_id_entries(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(
-        [
-            "服务ID (service_id)",
-            "业务功能 (business_function)",
-            "业务功能描述 (business_description)",
-            "服务类型 (service_type)",
-            "PSGA可用性 (psga_availability)",
-            "包名 (package_name)",
-            "范围类型 (scope_type)",
-            "APN类型 (apn_type)",
-            "访问链路说明 (access_link_desc)",
-            "Base URL模式 (base_url_mode)",
-            "JSON键 (base_url_json_key)",
-            "测试环境Base URL (base_url_test)",
-            "预发环境Base URL (base_url_uat)",
-            "生产环境Base URL (base_url_live)",
-            "创建人 (created_by)",
-            "最后更新人 (updated_by)",
-            "创建时间 (created_at)",
-            "最后更新时间 (updated_at)",
-        ]
-    )
+    columns = sid_export.resolve_effective_export_columns(db, tool_id)
+    writer.writerow([header for _, header in columns])
+    entry_ids = [int(r.id) for r in rows if r.id is not None]
+    extras_by_entry = sid_export.load_custom_field_values_bulk(db, entry_ids)
     for row in rows:
         created_user = db.get(User, row.created_by)
         updated_user = db.get(User, row.updated_by)
+        extras = extras_by_entry.get(int(row.id or 0), {})
         writer.writerow(
             [
-                row.service_id,
-                row.business_function,
-                row.business_description,
-                row.service_type,
-                row.psga_availability,
-                row.package_name,
-                row.scope_type,
-                row.apn_type,
-                row.access_link_desc,
-                row.base_url_mode.value,
-                row.base_url_json_key or "",
-                row.base_url_test,
-                row.base_url_uat,
-                row.base_url_live,
-                created_user.username if created_user else row.created_by,
-                updated_user.username if updated_user else row.updated_by,
-                row.created_at.isoformat() if row.created_at else "",
-                row.updated_at.isoformat() if row.updated_at else "",
+                sid_export.cell_value_for_export_key(key, row, extras, created_user, updated_user)
+                for key, _ in columns
             ]
         )
     payload = "\ufeff" + buf.getvalue()

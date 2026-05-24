@@ -1,58 +1,67 @@
 <template>
-  <el-card v-if="canManageTokenPreload" class="token-preload-card" shadow="never">
-    <template #header>
-      <div class="token-header">
-        <span>Token 预加载状态</span>
-        <div class="result-actions">
-          <el-button text :loading="tokenPreloadLoading" @click="triggerTokenPreload(false)">后台预热</el-button>
-          <el-button text :loading="tokenPreloadLoading" @click="loadAllTokenStatuses">查看全部 Token</el-button>
+  <el-tabs v-model="activeTab" class="mos-toolbox-root-tabs">
+    <el-tab-pane v-if="canManageTokenPreload" label="Token 预加载" name="token-preload" lazy>
+      <el-card class="token-preload-card" shadow="never">
+        <template #header>
+          <div class="token-header">
+            <span>Token 预加载状态</span>
+            <div class="result-actions">
+              <el-button text :loading="tokenPreloadLoading" @click="triggerTokenPreload(false)">后台预热</el-button>
+              <el-button text :loading="tokenPreloadLoading" @click="loadAllTokenStatuses">查看全部 Token</el-button>
+            </div>
+          </div>
+        </template>
+        <div class="table-scroll">
+          <el-table :data="tokenPreloadItems" size="small" stripe>
+            <el-table-column prop="label" label="Token" min-width="220" />
+            <el-table-column label="状态" width="120">
+              <template #default="scope">
+                <el-tag :type="tokenStatusTagType(scope.row.status)">{{ tokenStatusText(scope.row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="缓存剩余(s)" width="120">
+              <template #default="scope">{{ scope.row.cache_expires_in_seconds ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column prop="features" label="消费功能" min-width="260">
+              <template #default="scope">{{ (scope.row.features || []).join(' / ') || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="池子状态" width="120">
+              <template #default="scope">
+                <el-tag :type="scope.row.pool_inflight ? 'warning' : 'info'">
+                  {{ scope.row.pool_event || '—' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="池子统计" min-width="220">
+              <template #default="scope">
+                <span>
+                  命中 {{ scope.row.pool_stats?.hits ?? 0 }} / 等待 {{ scope.row.pool_stats?.waits ?? 0 }} / 新建 {{ scope.row.pool_stats?.misses ?? 0 }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="last_error" label="最近错误" min-width="220" show-overflow-tooltip />
+            <el-table-column label="操作" width="120" fixed="right">
+              <template #default="scope">
+                <el-button
+                  text
+                  type="primary"
+                  :loading="tokenPreloadLoading && refreshingScope === scope.row.scope"
+                  @click="refreshSingleToken(scope.row.scope)"
+                >
+                  立刻刷新
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-      </div>
-    </template>
-    <el-table :data="tokenPreloadItems" size="small" stripe>
-      <el-table-column prop="label" label="Token" min-width="220" />
-      <el-table-column label="状态" width="120">
-        <template #default="scope">
-          <el-tag :type="tokenStatusTagType(scope.row.status)">{{ tokenStatusText(scope.row.status) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="缓存剩余(s)" width="120">
-        <template #default="scope">{{ scope.row.cache_expires_in_seconds ?? 0 }}</template>
-      </el-table-column>
-      <el-table-column prop="features" label="消费功能" min-width="260">
-        <template #default="scope">{{ (scope.row.features || []).join(' / ') || '—' }}</template>
-      </el-table-column>
-      <el-table-column label="池子状态" width="120">
-        <template #default="scope">
-          <el-tag :type="scope.row.pool_inflight ? 'warning' : 'info'">
-            {{ scope.row.pool_event || '—' }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="池子统计" min-width="220">
-        <template #default="scope">
-          <span>
-            命中 {{ scope.row.pool_stats?.hits ?? 0 }} / 等待 {{ scope.row.pool_stats?.waits ?? 0 }} / 新建 {{ scope.row.pool_stats?.misses ?? 0 }}
-          </span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="last_error" label="最近错误" min-width="220" show-overflow-tooltip />
-      <el-table-column label="操作" width="120" fixed="right">
-        <template #default="scope">
-          <el-button
-            text
-            type="primary"
-            :loading="tokenPreloadLoading && refreshingScope === scope.row.scope"
-            @click="refreshSingleToken(scope.row.scope)"
-          >
-            立刻刷新
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-  </el-card>
+      </el-card>
+      <mos-toolbox-result-block
+        :payload="resultByTab['token-preload']"
+        download-name="mos-token-preload-result"
+        @clear="clearResult('token-preload')"
+      />
+    </el-tab-pane>
 
-  <el-tabs v-model="activeTab">
     <el-tab-pane label="IAM X509" name="x509-cert">
       <el-form label-width="120px">
         <el-form-item label="环境">
@@ -73,12 +82,27 @@
           <el-input v-model="x509Input" type="textarea" :rows="5" placeholder="按动作输入，每行一条（查询SN/签发CSR）或单条hex" />
         </el-form-item>
         <el-form-item label="批量导入">
-          <input type="file" accept=".txt,.csv,.log" @change="onX509InputFileChange" />
+          <div class="x509-file-input-wrap">
+            <label class="x509-file-input-label" for="x509-batch-file-input">上传批量文本文件</label>
+            <input
+              id="x509-batch-file-input"
+              type="file"
+              accept=".txt,.csv,.log"
+              aria-describedby="x509-file-hint"
+              @change="onX509InputFileChange"
+            />
+            <p id="x509-file-hint" class="x509-file-hint">支持 .txt / .csv / .log，读取后将覆盖当前输入文本。</p>
+          </div>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="x509Loading" @click="runX509">执行</el-button>
+          <el-button type="primary" :loading="x509Loading" aria-label="执行 IAM X509 操作" @click="runX509">执行</el-button>
         </el-form-item>
       </el-form>
+      <mos-toolbox-result-block
+        :payload="resultByTab['x509-cert']"
+        download-name="mos-x509-result"
+        @clear="clearResult('x509-cert')"
+      />
     </el-tab-pane>
 
     <el-tab-pane label="SIM 查询" name="sim-query">
@@ -123,9 +147,14 @@
           </el-form-item>
         </template>
         <el-form-item>
-          <el-button type="primary" :loading="simLoading" @click="runSimQuery">查询</el-button>
+          <el-button type="primary" :loading="simLoading" aria-label="执行 SIM 查询" @click="runSimQuery">查询</el-button>
         </el-form-item>
       </el-form>
+      <mos-toolbox-result-block
+        :payload="resultByTab['sim-query']"
+        download-name="mos-sim-result"
+        @clear="clearResult('sim-query')"
+      />
     </el-tab-pane>
 
     <el-tab-pane label="UAT AF DP" name="uat-af-dp-query">
@@ -143,9 +172,14 @@
           <el-input v-model="afDpIccid" placeholder="可选" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="afDpLoading" @click="runAfDpQuery">查询</el-button>
+          <el-button type="primary" :loading="afDpLoading" aria-label="执行 UAT AF DP 查询" @click="runAfDpQuery">查询</el-button>
         </el-form-item>
       </el-form>
+      <mos-toolbox-result-block
+        :payload="resultByTab['uat-af-dp-query']"
+        download-name="mos-uat-afdp-result"
+        @clear="clearResult('uat-af-dp-query')"
+      />
     </el-tab-pane>
 
     <el-tab-pane label="UAT Enrollment" name="uat-sp-query">
@@ -164,9 +198,14 @@
           <el-input v-model="spPhone" placeholder="请输入主账号手机号" style="width: 220px" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="spLoading" @click="runSpQuery">执行</el-button>
+          <el-button type="primary" :loading="spLoading" aria-label="执行 UAT Enrollment 操作" @click="runSpQuery">执行</el-button>
         </el-form-item>
       </el-form>
+      <mos-toolbox-result-block
+        :payload="resultByTab['uat-sp-query']"
+        download-name="mos-uat-sp-result"
+        @clear="clearResult('uat-sp-query')"
+      />
     </el-tab-pane>
 
     <el-tab-pane label="UAT 车辆配置导入" name="uat-vehicle-import">
@@ -254,60 +293,27 @@
           <el-input v-model="generatedVehicleJson" type="textarea" :rows="8" readonly />
         </el-form-item>
         <el-form-item>
-          <el-button :loading="generateVehicleLoading" @click="generateVehicleConfig">生成配置</el-button>
-          <el-button type="primary" :loading="importLoading" @click="runVehicleImport">导入</el-button>
+          <el-button :loading="generateVehicleLoading" aria-label="生成车辆配置" @click="generateVehicleConfig">生成配置</el-button>
+          <el-button type="primary" :loading="importLoading" aria-label="导入车辆配置" @click="runVehicleImport">导入</el-button>
         </el-form-item>
       </el-form>
+      <mos-toolbox-result-block
+        :payload="resultByTab['uat-vehicle-import']"
+        download-name="mos-uat-vehicle-import-result"
+        @clear="clearResult('uat-vehicle-import')"
+      />
     </el-tab-pane>
   </el-tabs>
-
-  <el-card class="result-card">
-    <template #header>
-      <div class="result-header">
-        <span>响应结果</span>
-        <div class="result-actions">
-          <el-button text @click="copyResult">复制</el-button>
-          <el-button text @click="downloadResultJson">下载JSON</el-button>
-          <el-button text @click="clearResult">清空</el-button>
-        </div>
-      </div>
-    </template>
-    <div v-if="resultTableRows.length === 0" class="result-empty">暂无结果</div>
-    <template v-else>
-      <el-table :data="paginatedResultRows" stripe>
-        <el-table-column
-          v-for="col in resultTableColumns"
-          :key="col"
-          :prop="col"
-          :label="col"
-          min-width="180"
-          show-overflow-tooltip
-        />
-      </el-table>
-      <div class="result-pagination-row" v-if="resultTableRows.length > resultPagination.pageSize">
-        <el-pagination
-          background
-          layout="total, prev, pager, next, sizes"
-          :total="resultTableRows.length"
-          :current-page="resultPagination.page"
-          :page-size="resultPagination.pageSize"
-          :page-sizes="[10, 20, 50, 100]"
-          @update:current-page="onResultPageChange"
-          @update:page-size="onResultPageSizeChange"
-        />
-      </div>
-    </template>
-  </el-card>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { toolsApi } from '@/api/tools'
+import MosToolboxResultBlock from '@/components/tool-detail/MosToolboxResultBlock.vue'
 
 const props = defineProps<{ toolId: number }>()
 const activeTab = ref('x509-cert')
-const resultPagination = reactive({ page: 1, pageSize: 20 })
 const canManageTokenPreload = ref(false)
 const refreshingScope = ref<string | null>(null)
 const resultByTab = reactive<Record<string, unknown>>({})
@@ -398,69 +404,8 @@ const vehicleVersionPatterns = computed(() => {
 })
 const hasVehicleRecentMemory = computed(() => Boolean(vehicleRecentMemory.value?.project))
 
-const normalizeCell = (value: unknown): string | number | boolean => {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value
-  return JSON.stringify(value)
-}
-
-const resultDataOnly = computed(() => {
-  const payload = (resultByTab[activeTab.value] || null) as Record<string, unknown> | null
-  return payload?.data
-})
-
-const resultTableRows = computed(() => {
-  const data = resultDataOnly.value
-  if (Array.isArray(data)) {
-    if (data.every((item) => item && typeof item === 'object' && !Array.isArray(item))) {
-      return data.map((item) => {
-        const obj = item as Record<string, unknown>
-        const out: Record<string, string | number | boolean> = {}
-        Object.keys(obj).forEach((k) => {
-          out[k] = normalizeCell(obj[k])
-        })
-        return out
-      })
-    }
-    return data.map((item, idx) => ({
-      序号: idx + 1,
-      值: normalizeCell(item)
-    }))
-  }
-  if (data && typeof data === 'object') {
-    return Object.entries(data as Record<string, unknown>).map(([k, v]) => ({
-      字段: k,
-      值: normalizeCell(v)
-    }))
-  }
-  if (data === null || data === undefined) return []
-  return [{ 值: normalizeCell(data) }]
-})
-
-const resultTableColumns = computed(() => {
-  const first = resultTableRows.value[0]
-  if (!first) return []
-  return Object.keys(first)
-})
-
-const paginatedResultRows = computed(() => {
-  const start = (resultPagination.page - 1) * resultPagination.pageSize
-  const end = start + resultPagination.pageSize
-  return resultTableRows.value.slice(start, end)
-})
-
-const onResultPageSizeChange = (size: number) => {
-  resultPagination.pageSize = size
-  resultPagination.page = 1
-}
-
-const onResultPageChange = (page: number) => {
-  resultPagination.page = page
-}
-
 const setResult = (payload: unknown, tabKey: string = activeTab.value) => {
   resultByTab[tabKey] = payload
-  resultPagination.page = 1
 }
 
 const VIN_REGEX = /^[A-HJ-NPR-Z0-9]{17}$/
@@ -512,7 +457,8 @@ const requestTokenPreload = async (
 const loadAllTokenStatuses = async () => {
   tokenPreloadLoading.value = true
   try {
-    await requestTokenPreload(undefined, false, false)
+    const res = await requestTokenPreload(undefined, false, false)
+    setResult(res, 'token-preload')
     ElMessage.success('已切换为全部 Token 视图')
   } catch (error: any) {
     ElMessage.error(getErrorMessage(error, '加载全部 Token 状态失败'))
@@ -533,7 +479,8 @@ const loadTokenPreloadVisibility = async () => {
 const triggerTokenPreload = async (forceRefresh: boolean) => {
   tokenPreloadLoading.value = true
   try {
-    await requestTokenPreload(undefined, false, forceRefresh)
+    const res = await requestTokenPreload(undefined, false, forceRefresh)
+    setResult(res, 'token-preload')
     ElMessage.success(forceRefresh ? '已触发强制预热' : '已触发后台预热')
   } catch (error: any) {
     ElMessage.error(getErrorMessage(error, 'Token 预热请求失败'))
@@ -546,7 +493,8 @@ const refreshSingleToken = async (scope: string) => {
   tokenPreloadLoading.value = true
   refreshingScope.value = scope
   try {
-    await requestTokenPreload([scope], false, true)
+    const res = await requestTokenPreload([scope], false, true)
+    setResult(res, 'token-preload')
     ElMessage.success(`已触发 ${scope} 刷新`)
   } catch (error: any) {
     ElMessage.error(getErrorMessage(error, `${scope} 刷新失败`))
@@ -594,40 +542,8 @@ const onX509InputFileChange = async (event: Event) => {
   }
 }
 
-const copyResult = async () => {
-  const text = JSON.stringify(resultDataOnly.value ?? null, null, 2)
-  if (!text.trim()) {
-    ElMessage.warning('暂无可复制内容')
-    return
-  }
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('结果已复制')
-  } catch {
-    ElMessage.error('复制失败，请检查浏览器权限')
-  }
-}
-
-const downloadResultJson = () => {
-  const text = JSON.stringify(resultDataOnly.value ?? null, null, 2)
-  if (!text.trim()) {
-    ElMessage.warning('暂无可下载内容')
-    return
-  }
-  const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `mos-toolbox-result-${Date.now()}.json`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
-const clearResult = () => {
-  delete resultByTab[activeTab.value]
-  resultPagination.page = 1
+const clearResult = (tabKey: string = activeTab.value) => {
+  delete resultByTab[tabKey]
 }
 
 const clearGeneratedVehicle = () => {
@@ -713,7 +629,9 @@ onMounted(() => {
   loadVehicleRules()
   loadVehicleRecentMemory()
   loadTokenPreloadVisibility()
-  requestTokenPreload(undefined, false, false).catch(() => {})
+  requestTokenPreload(undefined, false, false)
+    .then((res) => setResult(res, 'token-preload'))
+    .catch(() => {})
   if (vehicleRecentMemory.value && !vehicleProject.value) {
     applyVehicleRecentMemory()
   }
@@ -937,34 +855,11 @@ const runVehicleImport = async () => {
 
 <style scoped>
 .token-preload-card {
-  margin-bottom: 16px;
+  margin-bottom: 0;
 }
 
-.result-card {
-  margin-top: 16px;
-}
-
-.result-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.result-actions {
-  display: flex;
-  gap: 6px;
-}
-
-.result-empty {
-  color: #909399;
-  text-align: center;
-  padding: 24px 0;
-}
-
-.result-pagination-row {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
+.mos-toolbox-root-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
 }
 
 .vehicle-hint {
@@ -984,5 +879,54 @@ const runVehicleImport = async () => {
   border-radius: 4px;
   padding: 6px 10px;
   color: #606266;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.x509-file-input-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.x509-file-input-label {
+  font-size: 13px;
+  color: #606266;
+}
+
+.x509-file-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #606266;
+}
+
+@media (max-width: 768px) {
+  .token-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .vehicle-memory-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  :deep(.el-form--inline .el-form-item) {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-date-editor),
+  :deep(.el-input-number),
+  :deep(.el-textarea) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 </style>

@@ -2,12 +2,19 @@ from datetime import datetime
 from typing import Optional
 from enum import Enum
 from sqlmodel import SQLModel, Field
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, Column, Enum as SAEnum
 
 class PermissionStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+
+
+class ToolRuntimeStatus(str, Enum):
+    """工具运行时可用性（与 is_active 正交；发版/维护时可设 updating 以阻止业务调用）。"""
+
+    ACTIVE = "active"
+    UPDATING = "updating"
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -50,6 +57,20 @@ class Tool(SQLModel, table=True):
         description="JSON array of {key, label} for user-visible behavior names in usage logs",
     )
     is_active: bool = Field(default=True)
+    runtime_status: ToolRuntimeStatus = Field(
+        default=ToolRuntimeStatus.ACTIVE,
+        sa_column=Column(
+            SAEnum(
+                ToolRuntimeStatus,
+                values_callable=lambda x: [e.value for e in x],
+                native_enum=False,
+                validate_strings=True,
+            ),
+            nullable=False,
+            server_default=ToolRuntimeStatus.ACTIVE.value,
+            index=True,
+        ),
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -268,6 +289,413 @@ class ServiceIdEntryCustomFieldValue(SQLModel, table=True):
     value_json: str = Field(max_length=4000)
     updated_by: int = Field(foreign_key="user.id", index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ServiceIdCsvExportConfig(SQLModel, table=True):
+    """负责人配置的 Service ID 全量导出 CSV 列及顺序。"""
+
+    __tablename__ = "serviceidcsvexportconfig"
+
+    __table_args__ = (UniqueConstraint("tool_id", name="uq_service_id_csv_export_tool"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    columns_json: str = Field(max_length=16000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureProjectSpace(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("tool_id", "space_key", name="uq_data_secure_space_key"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    space_key: str = Field(max_length=64, index=True)
+    name: str = Field(max_length=120)
+    description: Optional[str] = Field(default=None, max_length=1000)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureQuestionType(str, Enum):
+    YES_NO = "yes_no"
+
+
+class DataSecureQuestionnaireQuestion(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "project_space_id", "question_key", name="uq_data_secure_question_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    question_key: str = Field(max_length=64, index=True)
+    title: str = Field(max_length=300)
+    help_text: Optional[str] = Field(default=None, max_length=8000)
+    question_type: DataSecureQuestionType = Field(default=DataSecureQuestionType.YES_NO)
+    is_required: bool = Field(default=True)
+    sort_order: int = Field(default=0, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureRelevanceRule(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("tool_id", "project_space_id", name="uq_data_secure_relevance_rule"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    min_yes_count: int = Field(default=1)
+    logic_operator: str = Field(default="and", max_length=10)
+    question_keys_json: str = Field(default="[]", max_length=4000)
+    logic_expression: Optional[str] = Field(default=None, max_length=2000)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureAssessmentSubmission(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    submitted_by: int = Field(foreign_key="user.id", index=True)
+    function_name: str = Field(max_length=500)
+    function_description: Optional[str] = Field(default=None, max_length=2000)
+    yes_count: int = Field(default=0)
+    total_count: int = Field(default=0)
+    is_related: bool = Field(default=False, index=True)
+    result_summary: str = Field(max_length=1000)
+    submitted_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureAssessmentAnswer(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("submission_id", "question_id", name="uq_data_secure_submission_answer"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    submission_id: int = Field(foreign_key="datasecureassessmentsubmission.id", index=True)
+    question_id: int = Field(foreign_key="datasecurequestionnairequestion.id", index=True)
+    answer_bool: bool = Field(default=False)
+    answer_text: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DataSecureFieldRequestStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class DataSecureFieldInputType(str, Enum):
+    TEXT = "text"
+    TEXTAREA = "textarea"
+    SINGLE_SELECT = "single_select"
+    MULTI_SELECT = "multi_select"
+
+
+class DataSecureLifecycleFieldDefinition(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "project_space_id", "field_key", name="uq_data_secure_lifecycle_field_def"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    field_key: str = Field(max_length=64, index=True)
+    label: str = Field(max_length=100)
+    input_type: DataSecureFieldInputType = Field(default=DataSecureFieldInputType.TEXT)
+    is_builtin: bool = Field(default=False, index=True)
+    is_active: bool = Field(default=True, index=True)
+    sort_order: int = Field(default=0, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureLifecycleFieldConfig(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "project_space_id", "field_key", name="uq_data_secure_lifecycle_field_cfg"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    field_key: str = Field(max_length=64, index=True)
+    help_text: Optional[str] = Field(default=None, max_length=500)
+    required: Optional[bool] = Field(default=None)
+    min_length: Optional[int] = Field(default=None)
+    max_length: Optional[int] = Field(default=None)
+    regex_pattern: Optional[str] = Field(default=None, max_length=500)
+    regex_error_message: Optional[str] = Field(default=None, max_length=200)
+    allowed_values_json: Optional[str] = Field(default=None, max_length=4000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldCatalogEntry(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("tool_id", "project_space_id", "field_name", name="uq_data_secure_field_name"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    field_name: str = Field(max_length=200, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldCatalogValue(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("entry_id", "field_key", name="uq_data_secure_catalog_value"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entry_id: int = Field(foreign_key="datasecurefieldcatalogentry.id", index=True)
+    field_key: str = Field(max_length=64, index=True)
+    value_json: str = Field(max_length=4000)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureTaxonomyNode(SQLModel, table=True):
+    """分类树：根节点 parent 为空，子节点无限向下链接（有最大深度校验）。数据字段本体对应主表 catalog 行。"""
+
+    __table_args__ = (UniqueConstraint("project_space_id", "node_key", name="uq_datasecure_taxonomy_space_nodekey"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    parent_id: Optional[int] = Field(default=None, foreign_key="datasecuretaxonomynode.id", index=True)
+    name: str = Field(max_length=200, index=True)
+    node_key: str = Field(max_length=64, index=True)
+    sort_order: int = Field(default=0, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldClassGrade(SQLModel, table=True):
+    """数据分类分级表：关联主表数据字段（catalog_entry），绑定分类路径与 C0–C3 分级。
+    taxonomy_l1_id 存根节点；taxonomy_l2_id 存路径上最细粒度分类节点（可为任意深度，空则仅绑定根）。"""
+
+    __table_args__ = (UniqueConstraint("catalog_entry_id", name="uq_datasecure_field_classgrade_entry"),)
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    catalog_entry_id: int = Field(foreign_key="datasecurefieldcatalogentry.id", index=True)
+    taxonomy_l1_id: Optional[int] = Field(default=None, foreign_key="datasecuretaxonomynode.id", index=True)
+    taxonomy_l2_id: Optional[int] = Field(default=None, foreign_key="datasecuretaxonomynode.id", index=True)
+    confidentiality_grade: str = Field(max_length=32, index=True)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldSecurityRequirement(SQLModel, table=True):
+    """数据安全要求表：关联数据字段；logic_expression 引用 predicate_map 中的标识，与分类分级组合求值。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    catalog_entry_id: int = Field(foreign_key="datasecurefieldcatalogentry.id", index=True)
+    requirement_text: str = Field(max_length=4000)
+    logic_expression: str = Field(max_length=2000)
+    predicate_map_json: str = Field(default="{}", max_length=8000)
+    priority: int = Field(default=100, index=True)
+    sort_order: int = Field(default=0, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldRequest(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    requested_by: int = Field(foreign_key="user.id", index=True)
+    request_type: str = Field(default="data_field", max_length=32, index=True)
+    field_name: str = Field(max_length=200, index=True)
+    payload_json: str = Field(default="{}", max_length=16000)
+    reason: Optional[str] = Field(default=None, max_length=1000)
+    status: DataSecureFieldRequestStatus = Field(default=DataSecureFieldRequestStatus.PENDING, index=True)
+    review_notes: Optional[str] = Field(default=None, max_length=1000)
+    reviewed_by: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    reviewed_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureBusinessFunctionOptionRequest(SQLModel, table=True):
+    """用户申请在「业务功能」填报字段中新增可选值，由工具负责人审核后写入允许值列表。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    requested_by: int = Field(foreign_key="user.id", index=True)
+    proposed_option: str = Field(max_length=200, index=True)
+    reason: Optional[str] = Field(default=None, max_length=1000)
+    status: DataSecureFieldRequestStatus = Field(default=DataSecureFieldRequestStatus.PENDING, index=True)
+    review_notes: Optional[str] = Field(default=None, max_length=1000)
+    reviewed_by: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    reviewed_at: Optional[datetime] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureGovernanceChangeLog(SQLModel, table=True):
+    """数据安全治理（管理端）字段/规则变更履历。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    domain: str = Field(max_length=50, index=True)
+    action: str = Field(max_length=50, index=True)
+    target_type: str = Field(max_length=50, index=True)
+    target_id: str = Field(max_length=120, index=True)
+    change_reason: str = Field(max_length=1000)
+    detail_json: str = Field(default="{}", max_length=8000)
+    changed_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureUsageReviewStatus(str, Enum):
+    """字段填报工单：负责人审批状态。"""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class DataSecureFieldUsageReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    submitted_by: int = Field(foreign_key="user.id", index=True)
+    """同一问卷判定仅能对应一次字段填报（工单）。"""
+    assessment_submission_id: Optional[int] = Field(
+        default=None, foreign_key="datasecureassessmentsubmission.id", index=True
+    )
+    function_name: str = Field(max_length=500, index=True)
+    function_description: Optional[str] = Field(default=None, max_length=2000)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    review_status: DataSecureUsageReviewStatus = Field(
+        default=DataSecureUsageReviewStatus.PENDING, index=True
+    )
+    review_notes: Optional[str] = Field(default=None, max_length=1000)
+    reviewed_by: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    reviewed_at: Optional[datetime] = Field(default=None, index=True)
+    submitted_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldUsageReportItem(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("report_id", "catalog_entry_id", name="uq_data_secure_field_usage_report_item"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    report_id: int = Field(foreign_key="datasecurefieldusagereport.id", index=True)
+    catalog_entry_id: int = Field(foreign_key="datasecurefieldcatalogentry.id", index=True)
+    field_name_snapshot: str = Field(max_length=200)
+    """填报时「其他信息」快照 JSON（与主表生命周期自定义列同源，不参与自动分类分级与安全要求求值）。"""
+    extra_snapshot_json: str = Field(default="{}", max_length=8000)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldClassificationRule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    keyword: str = Field(max_length=100, index=True)
+    category: str = Field(max_length=100, index=True)
+    level: str = Field(max_length=100, index=True)
+    """priority 越大越优先；同优先级时 sort_order 越小越优先，再按规则 id 升序。"""
+    priority: int = Field(default=100, index=True)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    sort_order: int = Field(default=0, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldClassificationMatrix(SQLModel, table=True):
+    """显式分类矩阵：数据字段名 + 扩展列取值全量精确匹配后给出分类/分级（优先于关键词规则）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    field_name: str = Field(max_length=200, index=True)
+    extension_match_json: str = Field(default="{}", max_length=4000)
+    category: str = Field(max_length=100, index=True)
+    level: str = Field(max_length=100, index=True)
+    priority: int = Field(default=200, index=True)
+    notes: Optional[str] = Field(default=None, max_length=1000)
+    sort_order: int = Field(default=0, index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_by: int = Field(foreign_key="user.id", index=True)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldClassificationResult(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("catalog_entry_id", name="uq_data_secure_field_classification_result"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    catalog_entry_id: int = Field(foreign_key="datasecurefieldcatalogentry.id", index=True)
+    field_name_snapshot: str = Field(max_length=200)
+    """当前对外展示的分类分级（自动或人工覆写后一致）。"""
+    category: str = Field(max_length=100, index=True)
+    level: str = Field(max_length=100, index=True)
+    rule_keyword: Optional[str] = Field(default=None, max_length=100)
+    """最近一次自动匹配快照（人工覆写时 category/level 可能与自动不一致）。"""
+    auto_category: str = Field(default="未分类", max_length=100)
+    auto_level: str = Field(default="L0", max_length=100)
+    auto_rule_keyword: Optional[str] = Field(default=None, max_length=100)
+    auto_rule_id: Optional[int] = Field(default=None, index=True)
+    auto_matrix_id: Optional[int] = Field(default=None, index=True)
+    auto_match_source: str = Field(default="keyword", max_length=20)
+    auto_hit_summary: Optional[str] = Field(default=None, max_length=800)
+    manual_reason: Optional[str] = Field(default=None, max_length=500)
+    source: str = Field(default="auto", max_length=20)
+    updated_by: int = Field(foreign_key="user.id", index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class DataSecureFieldClassificationAuditLog(SQLModel, table=True):
+    """分类分级人工覆写、恢复与重算留痕（审计）。"""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tool_id: int = Field(foreign_key="tool.id", index=True)
+    project_space_id: int = Field(foreign_key="datasecureprojectspace.id", index=True)
+    catalog_entry_id: Optional[int] = Field(default=None, foreign_key="datasecurefieldcatalogentry.id", index=True)
+    result_id: Optional[int] = Field(default=None, foreign_key="datasecurefieldclassificationresult.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    action: str = Field(max_length=40, index=True)
+    detail_json: str = Field(default="{}", max_length=4000)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class MosTokenPoolEntry(SQLModel, table=True):

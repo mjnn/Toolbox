@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -29,6 +30,7 @@ from app.schemas import (
     PublicNewToolSuggestionCreate,
 )
 from app.core.tool_visibility import is_tool_visible
+from app.api.v1.rbac import admin_notification_recipient_user_ids
 from app.core.config_simple import (
     SECRET_KEY, ALGORITHM,
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -37,6 +39,7 @@ from app.core.config_simple import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # 使用更安全的密码哈希配置
 pwd_context = CryptContext(
@@ -57,7 +60,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     # bcrypt限制：密码不能超过72字节
     if len(plain_password) > 72:
         plain_password = plain_password[:72]
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except ValueError as exc:
+        # 部分 passlib+bcrypt 版本组合会在校验阶段抛异常，降级为普通鉴权失败避免 500。
+        logger.warning("password verification failed with bcrypt backend error: %s", exc)
+        return False
 
 
 def get_password_hash(password: str) -> str:
@@ -102,14 +110,13 @@ def create_refresh_token(data: dict):
 
 
 def _notify_admins_for_registration_review(db: Session, applicant: User) -> None:
-    """普通注册待审核时，通知所有管理员。"""
-    admins = db.exec(select(User).where(User.is_superuser == True)).all()  # noqa: E712
-    for admin in admins:
-        if admin.id == applicant.id:
+    """普通注册待审核时，通知超级管理员与平台管理员。"""
+    for uid in admin_notification_recipient_user_ids(db):
+        if uid == applicant.id:
             continue
         db.add(
             Notification(
-                user_id=admin.id,
+                user_id=uid,
                 title="新用户待审核",
                 message=(
                     f"用户 {applicant.username}（{applicant.email}）完成注册，"
@@ -128,12 +135,12 @@ def _notify_tool_reviewers_for_registration(
     permission_id: int,
     applicant: User,
 ) -> None:
-    """注册时附带工具申请：通知工具负责人与管理员。"""
+    """注册时附带工具申请：通知工具负责人、超级管理员与平台管理员。"""
     recipients: set[int] = set()
     for owner in db.exec(select(ToolOwner).where(ToolOwner.tool_id == tool.id)).all():
         recipients.add(owner.user_id)
-    for admin in db.exec(select(User).where(User.is_superuser == True)).all():  # noqa: E712
-        recipients.add(admin.id)
+    for uid in admin_notification_recipient_user_ids(db):
+        recipients.add(uid)
     recipients.discard(applicant.id)
     for uid in recipients:
         db.add(
@@ -226,13 +233,12 @@ def register(user_data: UserCreate, db: Session = Depends(get_session)):
         ):
             raise HTTPException(status_code=404, detail="目标工具不存在或暂不可用")
 
-    # 创建用户（普通注册需管理员审核；注册时绑定工具申请则免管理员审核）
+    # 创建用户：除引导超级用户外均需审核；附带工具申请时由负责人批准权限后一并开通账号
     hashed_password = get_password_hash(user_data.password)
     email_norm = (user_data.email or "").strip().lower()
     first_super = (FIRST_SUPERUSER or "").strip().lower()
     is_bootstrap_super = email_norm == first_super and first_super != ""
-    is_tool_registration = requested_tool is not None
-    is_approved = is_bootstrap_super or is_tool_registration
+    is_approved = is_bootstrap_super
     db_user = User(
         username=user_data.username,
         email=user_data.email,
@@ -303,7 +309,10 @@ def register(user_data: UserCreate, db: Session = Depends(get_session)):
         db.commit()
         db.refresh(perm)
         _notify_tool_reviewers_for_registration(db, requested_tool, perm.id, db_user)
-        msg = "注册成功，已提交工具使用申请，请等待对应工具负责人审核"
+        msg = (
+            "注册已提交，请等待对应工具负责人审核您的使用申请；"
+            "申请通过后账号方可登录。"
+        )
     elif is_approved:
         msg = "注册成功，请登录"
     else:

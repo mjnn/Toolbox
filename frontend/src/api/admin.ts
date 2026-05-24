@@ -1,17 +1,26 @@
 import { api } from './auth'
 import type {
   AdminResetPasswordPayload,
+  AdminToolAssignmentOption,
+  AdminUserAllowedToolsPayload,
+  AdminUserAllowedToolsResponse,
   AdminUserImportResponse,
+  EnvFilePayload,
+  ToolTrafficDashboardResponse,
   FeedbackCountsResponse,
   FeedbackWithUser,
   PaginatedFeedbackWithUser,
   PaginatedAPIAccessLogs,
+  PaginatedToolLicenseCandidates,
   PaginatedToolLicenseUsers,
   RoleAssignmentRequest,
   SuccessResponse,
   ToolInDB,
   ToolReleaseInDB,
-  ToolReleasePublishPayload,
+  ToolVersionSyncPayload,
+  ToolVersionSyncResult,
+  ToolLicenseBatchUpdatePayload,
+  ToolLicenseBatchUpdateResult,
   ToolAnnouncementInDB,
   PaginatedToolAnnouncements,
   ToolOwnerWithUser,
@@ -135,8 +144,11 @@ export const adminApi = {
     return api.delete(`/admin/users/${userId}/roles/${roleName}`)
   },
 
-  updateToolStatus(toolId: number, is_active: boolean): Promise<ToolInDB> {
-    return api.patch(`/admin/tools/${toolId}/status`, { is_active })
+  updateToolStatus(
+    toolId: number,
+    payload: { is_active?: boolean; runtime_status?: 'active' | 'updating' }
+  ): Promise<ToolInDB> {
+    return api.patch(`/admin/tools/${toolId}/status`, payload)
   },
 
   updateToolDisplayConfig(
@@ -146,12 +158,8 @@ export const adminApi = {
     return api.put(`/admin/tools/${toolId}/display-config`, payload)
   },
 
-  publishToolRelease(toolId: number, data: ToolReleasePublishPayload): Promise<ToolReleaseInDB> {
-    return api.post(`/admin/tools/${toolId}/releases`, {
-      version: data.version,
-      spec_revision: data.spec_revision ?? undefined,
-      title: data.title ?? '版本更新',
-      changelog: data.changelog,
+  syncToolVersionRecord(toolId: number, data: ToolVersionSyncPayload = {}): Promise<ToolVersionSyncResult> {
+    return api.post(`/admin/tools/${toolId}/version-records/sync`, {
       notify_users: data.notify_users !== false,
     })
   },
@@ -182,6 +190,25 @@ export const adminApi = {
 
   revokeToolUserLicense(toolId: number, userId: number): Promise<SuccessResponse> {
     return api.delete(`/admin/tools/${toolId}/license-users/${userId}`)
+  },
+
+  getToolLicenseCandidates(
+    toolId: number,
+    skip: number = 0,
+    limit: number = 200,
+    filters?: { search?: string }
+  ): Promise<PaginatedToolLicenseCandidates> {
+    const params: Record<string, string | number> = { skip, limit }
+    const s = filters?.search?.trim()
+    if (s) params.search = s
+    return api.get(`/admin/tools/${toolId}/license-users/candidates`, { params })
+  },
+
+  batchUpdateToolUserLicense(
+    toolId: number,
+    payload: ToolLicenseBatchUpdatePayload
+  ): Promise<ToolLicenseBatchUpdateResult> {
+    return api.post(`/admin/tools/${toolId}/license-users/batch-update`, payload)
   },
 
   getToolUsageLogs(
@@ -240,6 +267,10 @@ export const adminApi = {
     return res.blob()
   },
 
+  clearAuditLogs(): Promise<SuccessResponse> {
+    return api.post('/admin/audit-logs/clear')
+  },
+
   getToolFeedback(
     toolId: number,
     skip: number = 0,
@@ -262,6 +293,10 @@ export const adminApi = {
 
   approveUser(userId: number): Promise<UserInDB> {
     return api.post(`/admin/users/${userId}/approve`)
+  },
+
+  transferSuperAdmin(userId: number): Promise<UserInDB> {
+    return api.post(`/admin/users/${userId}/transfer-super-admin`)
   },
 
   resetUserPassword(userId: number, data: AdminResetPasswordPayload): Promise<SuccessResponse> {
@@ -294,5 +329,36 @@ export const adminApi = {
 
   deleteUser(userId: number): Promise<SuccessResponse> {
     return api.delete(`/admin/users/${userId}`)
+  },
+
+  getToolAssignmentOptions(): Promise<AdminToolAssignmentOption[]> {
+    return api.get('/admin/tool_assignment/options')
+  },
+
+  getUserAllowedTools(userId: number): Promise<AdminUserAllowedToolsResponse> {
+    return api.get(`/admin/users/${userId}/allowed_tools`)
+  },
+
+  updateUserAllowedTools(
+    userId: number,
+    data: AdminUserAllowedToolsPayload
+  ): Promise<AdminUserAllowedToolsResponse> {
+    return api.put(`/admin/users/${userId}/allowed_tools`, data)
+  },
+
+  getToolTrafficDashboard(period: 'day' | 'week' | 'month'): Promise<ToolTrafficDashboardResponse> {
+    return api.get('/admin/analytics/tool-traffic', { params: { period } })
+  },
+
+  getEnvFile(): Promise<EnvFilePayload> {
+    return api.get('/admin/system/env-file')
+  },
+
+  putEnvFile(content: string): Promise<SuccessResponse> {
+    return api.put('/admin/system/env-file', { content })
+  },
+
+  restartBackend(confirmation: string): Promise<SuccessResponse> {
+    return api.post('/admin/system/backend/restart', { confirmation })
   },
 }

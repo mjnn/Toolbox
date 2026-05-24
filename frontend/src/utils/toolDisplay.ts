@@ -1,3 +1,5 @@
+import type { ToolInDB } from '@/api/types'
+
 const TOOL_DISPLAY_NAME_MAP: Record<string, string> = {
   'service-id-registry': 'Service ID 注册管理',
   'mos-integration-toolbox': 'MOS 集成工具箱',
@@ -27,4 +29,24 @@ export const resolveToolDisplayDescription = (
   if (custom) return custom
   const fallback = (description || '').trim()
   return fallback || '暂无描述'
+}
+
+/** 与后端一致：更新中/停用时，仅系统超级管理员可继续调用业务 API */
+export const isToolBusinessAvailable = (tool: ToolInDB, isSuperuser: boolean): boolean => {
+  if (isSuperuser) return true
+  if (!tool.is_active) return false
+  if (tool.runtime_status === 'updating') return false
+  return true
+}
+
+export const getToolStatusLabel = (tool: ToolInDB): string => {
+  if (!tool.is_active) return '暂不可用'
+  if (tool.runtime_status === 'updating') return '更新中'
+  return '可用'
+}
+
+export const getToolStatusTagType = (tool: ToolInDB): 'success' | 'warning' | 'info' => {
+  if (!tool.is_active) return 'warning'
+  if (tool.runtime_status === 'updating') return 'info'
+  return 'success'
 }

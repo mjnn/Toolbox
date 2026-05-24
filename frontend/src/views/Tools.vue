@@ -21,8 +21,9 @@
         <el-input
           v-model="toolSearchInput"
           placeholder="名称或描述"
+          aria-label="按名称或描述搜索工具"
           clearable
-          style="width: 260px"
+          class="tool-search-input"
           @keyup.enter="applyToolSearch"
         />
       </el-form-item>
@@ -42,13 +43,13 @@
         v-for="tool in displayedTools" 
         :key="tool.id"
         class="tool-card"
-        :class="{ 'inactive': !tool.is_active }"
+        :class="{ 'inactive': !isToolBusinessAvailable(tool, isSuperuser) }"
       >
         <template #header>
           <div class="tool-header">
             <span class="tool-name">{{ resolveToolDisplayName(tool.name, tool.display_name) }}</span>
-            <el-tag :type="tool.is_active ? 'success' : 'warning'" size="small">
-              {{ tool.is_active ? '可用' : '暂不可用' }}
+            <el-tag :type="getToolStatusTagType(tool)" size="small">
+              {{ getToolStatusLabel(tool) }}
             </el-tag>
           </div>
         </template>
@@ -171,20 +172,20 @@
         <template v-if="isAnonymousView">
           <el-divider>注册信息</el-divider>
           <el-form-item label="用户名" prop="username">
-            <el-input v-model="anonymousRegisterForm.username" placeholder="请输入用户名" />
+            <el-input v-model="applyForm.username" placeholder="请输入用户名" />
           </el-form-item>
           <el-form-item label="邮箱" prop="email">
-            <el-input v-model="anonymousRegisterForm.email" placeholder="请输入邮箱" />
+            <el-input v-model="applyForm.email" placeholder="请输入邮箱" />
           </el-form-item>
           <el-form-item label="姓名" prop="fullName">
-            <el-input v-model="anonymousRegisterForm.fullName" placeholder="请输入姓名" />
+            <el-input v-model="applyForm.fullName" placeholder="请输入姓名" />
           </el-form-item>
           <el-form-item label="部门" prop="department">
-            <el-input v-model="anonymousRegisterForm.department" placeholder="请输入部门" />
+            <el-input v-model="applyForm.department" placeholder="请输入部门" />
           </el-form-item>
           <el-form-item label="密码" prop="password">
             <el-input
-              v-model="anonymousRegisterForm.password"
+              v-model="applyForm.password"
               type="password"
               show-password
               placeholder="至少 8 位"
@@ -192,7 +193,7 @@
           </el-form-item>
           <el-form-item label="确认密码" prop="confirmPassword">
             <el-input
-              v-model="anonymousRegisterForm.confirmPassword"
+              v-model="applyForm.confirmPassword"
               type="password"
               show-password
               placeholder="请再次输入密码"
@@ -291,7 +292,13 @@ import { usersApi } from '@/api/users'
 import { adminApi } from '@/api/admin'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
-import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
+import {
+  getToolStatusLabel,
+  getToolStatusTagType,
+  isToolBusinessAvailable,
+  resolveToolDisplayDescription,
+  resolveToolDisplayName,
+} from '@/utils/toolDisplay'
 import { formatDateOnly as formatDate } from '@/utils/datetime'
 import { goBackOrFallback } from '@/utils/navigation'
 import type { ToolInDB, ToolOwnerWithUser, UserInDB, PermissionWithDetails } from '@/api/types'
@@ -328,13 +335,14 @@ const anonymousSuggestionDialogVisible = ref(false)
 const submittingAnonymousSuggestion = ref(false)
 const anonymousSuggestionFormRef = ref<FormInstance>()
 
-const isAdmin = computed(() => !!authStore.userInfo?.is_superuser)
+const isAdmin = computed(
+  () => !!(authStore.userInfo?.is_superuser || authStore.userInfo?.is_platform_admin)
+)
+const isSuperuser = computed(() => !!authStore.userInfo?.is_superuser)
 
 const applyForm = ref({
   toolName: '',
-  reason: ''
-})
-const anonymousRegisterForm = ref({
+  reason: '',
   username: '',
   email: '',
   fullName: '',
@@ -411,7 +419,7 @@ const applyRules: FormRules = {
     {
       validator: (_rule, value, callback) => {
         if (!isAnonymousView.value) return callback()
-        if (value !== anonymousRegisterForm.value.password) return callback(new Error('两次输入的密码不一致'))
+        if (value !== applyForm.value.password) return callback(new Error('两次输入的密码不一致'))
         callback()
       },
       trigger: 'blur'
@@ -513,11 +521,10 @@ const canUseTool = (toolId: number): boolean => {
   return false
 }
 
-/** 有使用权限且（管理员 或 工具为可用）时可进入使用页 */
+/** 有使用权限且工具业务可用时进入使用页；仅系统超级管理员在「更新中」时仍可进入 */
 const canStartUsing = (tool: ToolInDB): boolean => {
   if (!canUseTool(tool.id)) return false
-  if (isAdmin.value) return true
-  return tool.is_active
+  return isToolBusinessAvailable(tool, isSuperuser.value)
 }
 
 const displayedTools = computed(() => {
@@ -564,7 +571,11 @@ const handleViewTool = (tool: ToolInDB) => {
     return
   }
   if (!canStartUsing(tool)) {
-    ElMessage.warning('该工具暂不可用')
+    if (tool.runtime_status === 'updating' && !isSuperuser.value) {
+      ElMessage.warning('该工具正在更新中，请稍后再试')
+    } else {
+      ElMessage.warning('该工具暂不可用')
+    }
     return
   }
   router.push(`/tools/${tool.id}`)
@@ -574,17 +585,13 @@ const handleApplyPermission = (tool: ToolInDB) => {
   selectedTool.value = tool
   applyForm.value = {
     toolName: resolveToolDisplayName(tool.name, tool.display_name),
-    reason: ''
-  }
-  if (isAnonymousView.value) {
-    anonymousRegisterForm.value = {
-      username: '',
-      email: '',
-      fullName: '',
-      department: '',
-      password: '',
-      confirmPassword: ''
-    }
+    reason: '',
+    username: '',
+    email: '',
+    fullName: '',
+    department: '',
+    password: '',
+    confirmPassword: ''
   }
   applyDialogVisible.value = true
 }
@@ -647,11 +654,11 @@ const submitApply = async () => {
     
     if (isAnonymousView.value) {
       const payload = {
-        username: anonymousRegisterForm.value.username.trim(),
-        email: anonymousRegisterForm.value.email.trim(),
-        password: anonymousRegisterForm.value.password,
-        full_name: anonymousRegisterForm.value.fullName.trim(),
-        department: anonymousRegisterForm.value.department.trim(),
+        username: applyForm.value.username.trim(),
+        email: applyForm.value.email.trim(),
+        password: applyForm.value.password,
+        full_name: applyForm.value.fullName.trim(),
+        department: applyForm.value.department.trim(),
         requested_tool_id: selectedTool.value.id,
         requested_tool_reason: applyForm.value.reason.trim(),
         registration_entry: 'apply_tool' as const
@@ -717,6 +724,11 @@ onMounted(() => {
   margin-top: 12px;
 }
 
+.tool-search-input {
+  width: 260px;
+  max-width: 100%;
+}
+
 .page-header-title {
   font-size: 18px;
   font-weight: bold;
@@ -732,7 +744,7 @@ onMounted(() => {
 
 .welcome-hint {
   margin: 6px 0 0;
-  color: #909399;
+  color: #606266;
   font-size: 13px;
 }
 
@@ -767,6 +779,11 @@ onMounted(() => {
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
 }
 
+.tool-card:focus-within {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
 .tool-header {
   display: flex;
   justify-content: space-between;
@@ -793,7 +810,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   font-size: 12px;
-  color: #999;
+  color: #606266;
 }
 
 .tool-owners {
@@ -809,7 +826,7 @@ onMounted(() => {
 }
 
 .empty-owner {
-  color: #999;
+  color: #606266;
   font-size: 12px;
 }
 
@@ -837,7 +854,7 @@ onMounted(() => {
 }
 
 .suggestion-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 16px;
   line-height: 1.5;
@@ -852,5 +869,36 @@ onMounted(() => {
 .owner-dialog-title {
   color: #666;
   font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .tools-container {
+    padding: 12px;
+  }
+
+  .welcome-header {
+    flex-direction: column;
+  }
+
+  .welcome-actions {
+    width: 100%;
+  }
+
+  .welcome-actions .el-button {
+    flex: 1;
+  }
+
+  .tools-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .tool-card:hover {
+    transform: none;
+  }
+
+  .tool-footer {
+    justify-content: flex-start;
+  }
 }
 </style>

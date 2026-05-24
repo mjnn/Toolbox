@@ -10,6 +10,9 @@ globs:
 
 - 默认采用 `.cursor/rules/agent-universal-task-template.mdc` 的任务归类：B/C（新增或修改工具）优先插件化；A/D（涉及宿主）需明确最小改动面与回归清单后再改宿主。
 - **宿主**负责 IAM、工具目录、`ToolManage` 通用 Tab、`ensure_tool_access`、审计路径约定；见 `docs/TOOL_INTEGRATION_STANDARD.md`。仓库总览与 Agent 标准流程见 `docs/PROJECT_AND_AGENT_GUIDE.md`。
+- **工具插件 import 边界（硬约束）**：工具目录 `backend/app/tools/plugins/**` 禁止 import `app.api.v1.admin*` / `app.api.v1.admin_common` / `app.api.v1.rbac` / `app.core.config_simple`；共享逻辑必须下沉到 `app/services/*`（详见 `docs/TOOL_INTEGRATION_STANDARD.md` §6.2.1）。
+- **MOS 遗留适配层（硬约束）**：`app.services.mos_legacy_toolbox_adapter` **仅允许** `mos_integration_toolbox` 插件使用；其他工具禁止依赖（仓库脚本 `scripts/check_tool_plugin_boundaries.py` 会拦截）。
+- **密钥读取（推荐）**：`SECRET_KEY` 优先通过 `app.services.secret_key` 获取；工具插件仍禁止 `import app.core.config_simple`。
 - **新工具或改某一工具**：优先只修改：
   - `backend/app/tools/plugins/<tool_folder>/`（`routes.py` + `tool.manifest.json`）
   - `frontend/src/tools/registry.ts`（`toolDetailByKey` / `toolManageExtraTabsByKey` 增加一行映射）
@@ -20,5 +23,5 @@ globs:
 - 列表必须后端分页（`skip/limit` + `total/items`），前端分页控件与筛选重置行为必须完整；多 tab 页面建议将 tab 与分页状态同步到 URL query，保证刷新恢复上下文。
 - 所有用户可见提示必须中文：包括标题、按钮、表单提示、弹窗、toast、空态、错误提示，以及后端返回给前端直接展示的 `detail/message`（不可本地化的协议/字段名除外）。
 - 功能 URL 必须匹配 `/api/v1/tools/{tool_id}/features/{slug}`，`feature` 路径段可含 `/`（如 `mos-manage/vehicle-rules/42`）；在用户侧使用记录中展示 **行为中文名**，需在 manifest 的 `behavior_catalog` 与库表 `Tool.behavior_catalog_json` 中穷举 `key`→`label`，与路由变更同步更新。
-- 合并前在仓库根目录运行：`powershell -File scripts/run-ci-tool-checks.ps1`（manifest + 边界检查）。
+- 合并前在仓库根目录运行：`powershell -File scripts/run-ci-tool-checks.ps1`（manifest + 边界检查）；并在 `frontend` 下执行 **`pnpm install --frozen-lockfile`（若需要）** 与 **`pnpm run build`**（与 CI 一致）。
 - 新增工具需求可先用 `docs/templates/NEW_TOOL_AGENT_TEMPLATE.md` 填表后 @ 该文件让 Agent 实现。

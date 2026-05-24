@@ -3,17 +3,26 @@
     <el-container class="layout">
       <el-header class="header">
         <div class="header-left">
+          <el-button
+            class="mobile-menu-btn"
+            text
+            circle
+            aria-label="打开导航菜单"
+            @click="mobileNavVisible = true"
+          >
+            <el-icon><Menu /></el-icon>
+          </el-button>
           <h2>MOS综合工具箱</h2>
         </div>
         <div class="header-right">
           <el-dropdown @command="handleCommand">
-            <div class="user-info">
+            <button class="user-info" type="button" aria-label="打开用户菜单">
               <el-avatar :size="36" :src="avatarDisplayUrl" :style="{ backgroundColor: '#409EFF' }">
                 {{ userInitial }}
               </el-avatar>
               <span class="username">{{ userInfo?.full_name || userInfo?.username }}</span>
               <el-icon><arrow-down /></el-icon>
-            </div>
+            </button>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="profile">个人资料</el-dropdown-item>
@@ -24,55 +33,38 @@
         </div>
       </el-header>
       
-      <el-container>
-        <el-aside width="200px" class="sidebar">
+      <el-container class="body-shell">
+        <el-aside v-if="!isMobile" width="200px" class="sidebar">
           <el-menu
             :default-active="menuActiveIndex"
             router
             class="sidebar-menu"
+            @select="handleMenuSelect"
           >
-            <el-menu-item v-if="userInfo?.is_superuser" index="/users">
-              <el-icon><user-filled /></el-icon>
-              <span>用户管理</span>
-            </el-menu-item>
-            <el-menu-item index="/my-tools">
-              <el-icon><folder-opened /></el-icon>
-              <span>我的工具</span>
-            </el-menu-item>
-            <el-menu-item index="/tools">
-              <el-icon><setting /></el-icon>
-              <span>所有工具</span>
-            </el-menu-item>
-            <el-menu-item index="/notifications">
-              <el-icon><bell /></el-icon>
-              <span>通知</span>
-            </el-menu-item>
-            <el-menu-item index="/profile">
-              <el-icon><ProfileMenuIcon /></el-icon>
-              <span>个人资料</span>
-            </el-menu-item>
-            <el-menu-item index="/permissions">
-              <el-icon><document /></el-icon>
-              <span>权限管理</span>
-            </el-menu-item>
-            <el-menu-item v-if="userInfo?.is_superuser" index="/audit-logs">
-              <el-icon><tickets /></el-icon>
-              <span>行为日志</span>
-            </el-menu-item>
-            <el-menu-item v-if="userInfo?.is_superuser" index="/feedback-admin">
-              <el-icon><chat-line-round /></el-icon>
-              <span>反馈管理</span>
-            </el-menu-item>
-            <el-menu-item v-if="userInfo?.is_superuser" index="/system-db-optimization">
-              <el-icon><setting /></el-icon>
-              <span>数据库优化</span>
+            <el-menu-item v-for="item in visibleMenuEntries" :key="item.index" :index="item.index">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
             </el-menu-item>
           </el-menu>
         </el-aside>
+
+        <el-drawer v-model="mobileNavVisible" direction="ltr" size="78%" :with-header="false" class="mobile-nav-drawer">
+          <el-menu
+            :default-active="menuActiveIndex"
+            router
+            class="mobile-nav-menu"
+            @select="handleMenuSelect"
+          >
+            <el-menu-item v-for="item in visibleMenuEntries" :key="item.index" :index="item.index">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
+            </el-menu-item>
+          </el-menu>
+        </el-drawer>
         
         <el-main class="main-content">
           <div class="welcome-card">
-            <el-tabs v-if="userInfo?.is_superuser" v-model="adminDashboardTab" class="admin-dashboard-tabs">
+            <el-tabs v-if="isPlatformStaff" v-model="adminDashboardTab" class="admin-dashboard-tabs">
               <el-tab-pane label="数据概览" name="overview">
                 <div class="welcome-header">
                   <div>
@@ -81,7 +73,7 @@
                   </div>
                   <div class="welcome-actions">
                     <el-badge
-                      v-if="userInfo?.is_superuser"
+                      v-if="isPlatformStaff"
                       :value="feedbackAdminTotal"
                       :hidden="feedbackAdminTotal === 0"
                       class="welcome-feedback-badge"
@@ -95,7 +87,7 @@
                 </div>
 
                 <div class="stats">
-                  <el-card v-if="userInfo?.is_superuser" class="stat-card">
+                  <el-card v-if="isPlatformStaff" class="stat-card">
                     <div class="stat-content">
                       <el-icon class="stat-icon" color="#409EFF"><user-filled /></el-icon>
                       <div>
@@ -105,7 +97,15 @@
                     </div>
                   </el-card>
 
-                  <el-card class="stat-card stat-card-clickable" @click="goMyTools">
+                  <el-card
+                    class="stat-card stat-card-clickable"
+                    role="button"
+                    tabindex="0"
+                    aria-label="进入我的工具"
+                    @click="goMyTools"
+                    @keydown.enter.prevent="goMyTools"
+                    @keydown.space.prevent="goMyTools"
+                  >
                     <div class="stat-content">
                       <el-icon class="stat-icon" color="#67C23A"><folder-opened /></el-icon>
                       <div>
@@ -115,7 +115,15 @@
                     </div>
                   </el-card>
 
-                  <el-card class="stat-card stat-card-clickable" @click="goNotifications">
+                  <el-card
+                    class="stat-card stat-card-clickable"
+                    role="button"
+                    tabindex="0"
+                    aria-label="进入通知页面"
+                    @click="goNotifications"
+                    @keydown.enter.prevent="goNotifications"
+                    @keydown.space.prevent="goNotifications"
+                  >
                     <div class="stat-content">
                       <el-icon class="stat-icon" color="#E6A23C"><bell /></el-icon>
                       <div>
@@ -127,7 +135,40 @@
                 </div>
               </el-tab-pane>
 
-              <el-tab-pane label="公告管理" name="announcement">
+              <el-tab-pane label="工具访问量" name="traffic">
+                <el-alert
+                  title="统计有「工具维度」的 API 访问日志；已排除超级管理员与平台管理员自身请求。"
+                  type="info"
+                  :closable="false"
+                  style="margin-bottom: 12px"
+                />
+                <div class="traffic-toolbar">
+                  <span class="traffic-label">时间范围</span>
+                  <el-radio-group v-model="trafficPeriod" size="small" @change="loadTraffic">
+                    <el-radio-button value="day">日（近24小时）</el-radio-button>
+                    <el-radio-button value="week">周（近7天）</el-radio-button>
+                    <el-radio-button value="month">月（近30天）</el-radio-button>
+                  </el-radio-group>
+                  <el-button type="primary" plain size="small" :loading="trafficLoading" style="margin-left: 12px" @click="loadTraffic">
+                    刷新
+                  </el-button>
+                </div>
+                <p v-if="trafficSummaryText" class="traffic-range">{{ trafficSummaryText }}</p>
+                <el-table :data="trafficRows" v-loading="trafficLoading" stripe empty-text="暂无数据">
+                  <el-table-column prop="tool_name" label="工具" min-width="160" show-overflow-tooltip />
+                  <el-table-column prop="request_count" label="请求量" width="120" />
+                  <el-table-column label="相对占比" min-width="220">
+                    <template #default="scope">
+                      <el-progress
+                        :percentage="trafficBarPercent(scope.row.request_count)"
+                        :stroke-width="14"
+                      />
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-tab-pane>
+
+              <el-tab-pane v-if="userInfo?.is_superuser" label="公告管理" name="announcement">
                 <el-alert
                   title="可在此发布全站公告（固定显示在所有页面顶部滚动条）"
                   type="info"
@@ -246,7 +287,7 @@
                 </div>
                 <div class="welcome-actions">
                   <el-badge
-                    v-if="userInfo?.is_superuser"
+                    v-if="isPlatformStaff"
                     :value="feedbackAdminTotal"
                     :hidden="feedbackAdminTotal === 0"
                     class="welcome-feedback-badge"
@@ -260,7 +301,7 @@
               </div>
 
               <div class="stats">
-                <el-card v-if="userInfo?.is_superuser" class="stat-card">
+                <el-card v-if="isPlatformStaff" class="stat-card">
                   <div class="stat-content">
                     <el-icon class="stat-icon" color="#409EFF"><user-filled /></el-icon>
                     <div>
@@ -270,7 +311,15 @@
                   </div>
                 </el-card>
 
-                <el-card class="stat-card stat-card-clickable" @click="goMyTools">
+                <el-card
+                  class="stat-card stat-card-clickable"
+                  role="button"
+                  tabindex="0"
+                  aria-label="进入我的工具"
+                  @click="goMyTools"
+                  @keydown.enter.prevent="goMyTools"
+                  @keydown.space.prevent="goMyTools"
+                >
                   <div class="stat-content">
                     <el-icon class="stat-icon" color="#67C23A"><folder-opened /></el-icon>
                     <div>
@@ -280,7 +329,15 @@
                   </div>
                 </el-card>
 
-                <el-card class="stat-card stat-card-clickable" @click="goNotifications">
+                <el-card
+                  class="stat-card stat-card-clickable"
+                  role="button"
+                  tabindex="0"
+                  aria-label="进入通知页面"
+                  @click="goNotifications"
+                  @keydown.enter.prevent="goNotifications"
+                  @keydown.space.prevent="goNotifications"
+                >
                   <div class="stat-content">
                     <el-icon class="stat-icon" color="#E6A23C"><bell /></el-icon>
                     <div>
@@ -301,13 +358,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   UserFilled,
   User as ProfileMenuIcon,
   Setting,
+  Menu,
   ArrowDown,
   FolderOpened,
   Bell,
@@ -326,7 +384,7 @@ import FeedbackDialog from '@/components/FeedbackDialog.vue'
 import { getFeedbackAdminBadgeCount } from '@/utils/feedbackAdminBadge'
 import { buildAvatarDisplaySrc } from '@/utils/avatarDisplayUrl'
 import { formatDateTime as formatDate, formatShanghaiCalendarHeader } from '@/utils/datetime'
-import type { ToolAnnouncementInDB } from '@/api/types'
+import type { ToolAnnouncementInDB, ToolTrafficRow } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -344,7 +402,9 @@ const menuActiveIndex = computed(() => {
   if (p.startsWith('/permissions')) return '/permissions'
   if (p.startsWith('/audit-logs')) return '/audit-logs'
   if (p.startsWith('/feedback-admin')) return '/feedback-admin'
-  if (p.startsWith('/system-db-optimization')) return '/system-db-optimization'
+  if (p.startsWith('/system-other-settings') || p.startsWith('/system-db-optimization')) {
+    return '/system-other-settings'
+  }
   // 首页 `/` 等：不高亮任一菜单项（避免误把「所有工具」当作始终选中）
   return ''
 })
@@ -356,6 +416,72 @@ const userInitial = computed(() => {
 const avatarDisplayUrl = computed(() =>
   buildAvatarDisplaySrc(userInfo.value?.avatar_url, userInfo.value?.updated_at),
 )
+type MenuEntry = {
+  index: string
+  label: string
+  icon: Component
+  /** 超级管理员或平台管理员可见 */
+  platformStaff?: boolean
+  /** 仅超级管理员 */
+  superOnly?: boolean
+}
+const isMobile = ref(false)
+const mobileNavVisible = ref(false)
+const menuEntries: MenuEntry[] = [
+  { index: '/users', label: '用户管理', icon: UserFilled, platformStaff: true },
+  { index: '/my-tools', label: '我的工具', icon: FolderOpened },
+  { index: '/tools', label: '所有工具', icon: Setting },
+  { index: '/notifications', label: '通知', icon: Bell },
+  { index: '/profile', label: '个人资料', icon: ProfileMenuIcon },
+  { index: '/permissions', label: '权限管理', icon: Document },
+  { index: '/audit-logs', label: '行为日志', icon: Tickets, platformStaff: true },
+  { index: '/feedback-admin', label: '反馈管理', icon: ChatLineRound, platformStaff: true },
+  { index: '/system-other-settings', label: '系统配置', icon: Setting, superOnly: true },
+]
+
+const isPlatformStaff = computed(
+  () => !!(userInfo.value?.is_superuser || userInfo.value?.is_platform_admin)
+)
+
+const trafficPeriod = ref<'day' | 'week' | 'month'>('day')
+const trafficLoading = ref(false)
+const trafficRows = ref<ToolTrafficRow[]>([])
+const trafficRange = ref<{ start: string; end: string } | null>(null)
+const trafficMax = computed(() => Math.max(1, ...trafficRows.value.map((r) => r.request_count)))
+const trafficBarPercent = (n: number) => Math.min(100, Math.round((n / trafficMax.value) * 100))
+const trafficSummaryText = computed(() => {
+  if (!trafficRange.value) return ''
+  return `统计区间：${formatDate(trafficRange.value.start)} — ${formatDate(trafficRange.value.end)}（UTC）`
+})
+
+const loadTraffic = async () => {
+  trafficLoading.value = true
+  try {
+    const res = await adminApi.getToolTrafficDashboard(trafficPeriod.value)
+    trafficRows.value = res.rows || []
+    trafficRange.value = { start: res.range_start, end: res.range_end }
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载访问量失败')
+  } finally {
+    trafficLoading.value = false
+  }
+}
+
+const visibleMenuEntries = computed(() =>
+  menuEntries.filter((item) => {
+    if (item.superOnly) return !!userInfo.value?.is_superuser
+    if (item.platformStaff) return isPlatformStaff.value
+    return true
+  })
+)
+const updateViewportState = () => {
+  const mobile = window.innerWidth <= 768
+  isMobile.value = mobile
+  if (!mobile) mobileNavVisible.value = false
+}
+const handleMenuSelect = () => {
+  if (isMobile.value) mobileNavVisible.value = false
+}
 
 const currentDate = ref('')
 const userCount = ref(0)
@@ -363,7 +489,7 @@ const myToolsCount = ref(0)
 const notificationUnreadCount = ref(0)
 const feedbackAdminTotal = ref(0)
 const systemFeedbackVisible = ref(false)
-const adminDashboardTab = ref<'overview' | 'announcement'>('overview')
+const adminDashboardTab = ref<'overview' | 'traffic' | 'announcement'>('overview')
 const loadingAdminAnnouncements = ref(false)
 const savingAdminAnnouncement = ref(false)
 const adminAnnouncementRows = ref<ToolAnnouncementInDB[]>([])
@@ -383,7 +509,7 @@ const adminAnnouncementForm = reactive({
 })
 
 const onSystemFeedbackSubmitted = async () => {
-  if (userInfo.value?.is_superuser) {
+  if (isPlatformStaff.value) {
     try {
       const c = await adminApi.getFeedbackCounts()
       feedbackAdminTotal.value = getFeedbackAdminBadgeCount(c.total, userInfo.value?.id ?? 0)
@@ -545,7 +671,7 @@ const refreshWelcomeDate = () => {
 
 const fetchDashboardData = async () => {
   try {
-    if (userInfo.value?.is_superuser) {
+    if (userInfo.value?.is_superuser || userInfo.value?.is_platform_admin) {
       const users = await usersApi.getUsers(0, 1)
       userCount.value = users.total
     } else {
@@ -555,6 +681,16 @@ const fetchDashboardData = async () => {
     const tools = await toolsApi.getTools(0, 500)
     if (userInfo.value?.is_superuser) {
       myToolsCount.value = tools.length
+    } else if (userInfo.value?.is_platform_admin) {
+      const myPerms = await permissionsApi.getMyPermissions()
+      const approved = new Set(
+        myPerms.filter((p) => p.status === 'approved').map((p) => p.tool_id)
+      )
+      const owned = await adminApi.getMyOwnerTools()
+      const ownedSet = new Set(owned)
+      myToolsCount.value = tools.filter(
+        (t) => approved.has(t.id) || ownedSet.has(t.id)
+      ).length
     } else {
       const myPerms = await permissionsApi.getMyPermissions()
       const approved = new Set(
@@ -570,7 +706,7 @@ const fetchDashboardData = async () => {
     const notifications = await notificationsApi.list()
     notificationUnreadCount.value = notifications.filter((n) => !n.is_read).length
 
-    if (userInfo.value?.is_superuser) {
+    if (userInfo.value?.is_superuser || userInfo.value?.is_platform_admin) {
       try {
         const fc = await adminApi.getFeedbackCounts()
         feedbackAdminTotal.value = getFeedbackAdminBadgeCount(fc.total, userInfo.value?.id ?? 0)
@@ -589,9 +725,14 @@ watch(adminDashboardTab, async (value) => {
   if (value === 'announcement') {
     await loadAdminAnnouncements()
   }
+  if (value === 'traffic') {
+    await loadTraffic()
+  }
 })
 
 onMounted(() => {
+  updateViewportState()
+  window.addEventListener('resize', updateViewportState)
   refreshWelcomeDate()
 
   // 如果没有用户信息，尝试获取
@@ -607,6 +748,10 @@ onMounted(() => {
   } else if (authStore.userInfo) {
     fetchDashboardData()
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportState)
 })
 </script>
 
@@ -633,6 +778,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.mobile-menu-btn {
+  display: none;
 }
 
 .header-left h2 {
@@ -668,10 +817,17 @@ onMounted(() => {
   padding: 8px 12px;
   border-radius: 6px;
   transition: background-color 0.3s;
+  border: none;
+  background: transparent;
 }
 
 .user-info:hover {
   background-color: #f5f7fa;
+}
+
+.user-info:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
 }
 
 .username {
@@ -688,6 +844,15 @@ onMounted(() => {
 .sidebar-menu {
   border-right: none;
   height: 100%;
+}
+
+.mobile-nav-menu {
+  border-right: none;
+  height: 100%;
+}
+
+.mobile-nav-drawer :deep(.el-drawer__body) {
+  padding: 0;
 }
 
 .main-content {
@@ -712,7 +877,7 @@ onMounted(() => {
 }
 
 .welcome-card p {
-  color: #666;
+  color: #606266;
   margin-bottom: 30px;
 }
 
@@ -752,13 +917,32 @@ onMounted(() => {
 
 .announcement-meta {
   font-size: 12px;
-  color: #909399;
+  color: #606266;
 }
 
 .table-pagination {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+.traffic-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.traffic-label {
+  font-size: 14px;
+  color: #606266;
+}
+
+.traffic-range {
+  font-size: 13px;
+  color: #606266;
+  margin: 0 0 12px;
 }
 
 .stats {
@@ -781,6 +965,11 @@ onMounted(() => {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 
+.stat-card-clickable:focus-visible {
+  outline: 2px solid #409eff;
+  outline-offset: 2px;
+}
+
 .stat-content {
   display: flex;
   align-items: center;
@@ -799,7 +988,73 @@ onMounted(() => {
 
 .stat-label {
   font-size: 14px;
-  color: #666;
+  color: #606266;
   margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .dashboard-container {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .header {
+    height: auto;
+    min-height: 56px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .header-left h2 {
+    font-size: 18px;
+  }
+
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  .user-info {
+    padding: 4px 0;
+  }
+
+  .username {
+    display: none;
+  }
+
+  .body-shell {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid #e4e7ed;
+  }
+
+  .sidebar-menu {
+    height: auto;
+  }
+
+  .main-content {
+    padding: 12px;
+  }
+
+  .welcome-card {
+    padding: 16px;
+  }
+
+  .welcome-card p {
+    margin-bottom: 16px;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .table-pagination {
+    justify-content: flex-start;
+  }
 }
 </style>

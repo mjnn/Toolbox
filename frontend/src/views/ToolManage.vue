@@ -28,13 +28,20 @@
                 <el-card class="nested-card" shadow="never">
                 <template #header>工具状态</template>
                 <p class="section-hint">
-                  「暂不可用」时，除管理员外，即使用户已有权限也无法从列表进入使用；变更后会通知已授权用户与工具负责人。
+                  「暂不可用」时，除系统超级管理员外，有权限用户也无法从列表进入使用。「更新中」用于发版与维护，会拦截全部业务
+                  请求（含工具负责人与平台管理员，仅系统超级管理员可排障）。变更后会通知已授权用户与工具负责人。
                 </p>
                 <el-form :inline="true" class="status-form">
-                  <el-form-item label="状态">
+                  <el-form-item label="启停">
                     <el-radio-group v-model="statusFormActive" :disabled="savingStatus">
                       <el-radio :label="true">可用</el-radio>
                       <el-radio :label="false">暂不可用</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="运行">
+                    <el-radio-group v-model="statusFormRuntime" :disabled="savingStatus">
+                      <el-radio label="active">运行中</el-radio>
+                      <el-radio label="updating">更新中</el-radio>
                     </el-radio-group>
                   </el-form-item>
                   <el-form-item>
@@ -79,46 +86,28 @@
                 </el-card>
               </el-tab-pane>
 
-              <el-tab-pane label="发版管理" name="release">
+              <el-tab-pane label="版本管理" name="release">
                 <el-card class="nested-card" shadow="never">
-                <template #header>版本发版与更新记录</template>
+                <template #header>版本信息同步与更新记录</template>
                 <p class="section-hint">
-                  发版后「发版版本」与可选的「规格修订」会显示在工具列表与详情；规格修订可与需求模板
-                  <code>NEW_TOOL_AGENT_TEMPLATE.md</code> 中 §2.3 的版本号对齐。可勾选向已授权用户与负责人推送通知。
+                  不再手工录入发版内容。宿主会通过工具版本接口直接获取「版本号 + 变更说明」，并自动记录到版本历史。
+                  可勾选向已授权用户与负责人推送通知。
                 </p>
                 <div v-if="tool" class="release-current-line">
-                  <span>当前发版：<strong>{{ tool.version }}</strong></span>
+                  <span>当前版本：<strong>{{ tool.version }}</strong></span>
                   <span v-if="tool.spec_revision">　规格修订：<strong>{{ tool.spec_revision }}</strong></span>
                 </div>
                 <el-form label-width="112px" class="release-form">
-                  <el-form-item label="新版本号" required>
-                    <el-input v-model="releaseForm.version" placeholder="如 1.2.0" clearable style="max-width: 220px" />
-                  </el-form-item>
-                  <el-form-item label="规格修订">
-                    <el-input
-                      v-model="releaseForm.spec_revision"
-                      placeholder="如 v0.3（可与需求模板修订记录一致）"
-                      clearable
-                      style="max-width: 320px"
-                    />
-                  </el-form-item>
-                  <el-form-item label="更新标题">
-                    <el-input v-model="releaseForm.title" placeholder="默认：版本更新" clearable style="max-width: 400px" />
-                  </el-form-item>
-                  <el-form-item label="更新说明" required>
-                    <el-input
-                      v-model="releaseForm.changelog"
-                      type="textarea"
-                      :rows="5"
-                      placeholder="发版内容、接口或行为变更等"
-                      style="max-width: 560px"
-                    />
-                  </el-form-item>
-                  <el-form-item label="通知用户">
-                    <el-switch v-model="releaseForm.notify_users" active-text="推送通知" inactive-text="仅记录" />
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" :loading="publishingRelease" @click="submitRelease">发版</el-button>
+                  <el-form-item label="同步操作">
+                    <el-switch v-model="versionSyncNotifyUsers" active-text="推送通知" inactive-text="仅记录" />
+                    <el-button
+                      type="primary"
+                      :loading="syncingVersionInfo"
+                      style="margin-left: 12px"
+                      @click="syncVersionInfo"
+                    >
+                      从工具接口同步版本
+                    </el-button>
                   </el-form-item>
                 </el-form>
                 <el-table v-loading="loadingReleases" :data="manageReleaseRows" stripe size="small">
@@ -155,6 +144,7 @@
                     <el-input
                       v-model="licenseSearchInput"
                       placeholder="用户名 / 邮箱 / 姓名"
+                      aria-label="按用户名、邮箱或姓名筛选授权用户"
                       clearable
                       style="width: 260px"
                       @keyup.enter="applyLicenseSearch"
@@ -163,6 +153,8 @@
                   <el-form-item>
                     <el-button type="primary" :loading="loadingLicense" @click="applyLicenseSearch">查询</el-button>
                     <el-button @click="resetLicenseSearch">重置</el-button>
+                    <el-button type="success" plain @click="openBatchLicenseDialog('grant')">批量授权</el-button>
+                    <el-button type="danger" plain @click="openBatchLicenseDialog('revoke')">批量取消授权</el-button>
                   </el-form-item>
                 </el-form>
                 <el-table :data="licenseRows" v-loading="loadingLicense" stripe>
@@ -193,6 +185,7 @@
                         size="small"
                         link
                         :loading="revokingUserId === scope.row.user.id"
+                        :aria-label="`取消用户 ${scope.row.user.username} 的工具授权`"
                         @click="confirmRevokeLicense(scope.row)"
                       >
                         取消授权
@@ -225,6 +218,7 @@
                     <el-input
                       v-model="usageLogUsername"
                       placeholder="用户名模糊匹配"
+                      aria-label="按用户名筛选使用记录"
                       clearable
                       style="width: 180px"
                       @keyup.enter="onUsageSearch"
@@ -234,6 +228,7 @@
                     <el-input
                       v-model="usageLogKeyword"
                       placeholder="行为说明 / 路径片段 / 方法"
+                      aria-label="按关键词筛选使用记录"
                       clearable
                       style="width: 220px"
                       @keyup.enter="onUsageSearch"
@@ -303,6 +298,64 @@
           </el-tab-pane>
         </el-tabs>
       </el-card>
+
+      <el-dialog
+        v-model="batchLicenseDialogVisible"
+        :title="batchLicenseAction === 'grant' ? '批量授权用户使用本工具' : '批量取消用户使用本工具权限'"
+        width="860px"
+        destroy-on-close
+      >
+        <p class="section-hint">
+          支持对用户批量{{ batchLicenseAction === 'grant' ? '授权' : '取消授权' }}。候选用户已自动排除管理员与当前登录用户。
+        </p>
+        <el-form :inline="true" class="license-filter-form" @submit.prevent="fetchBatchLicenseCandidates">
+          <el-form-item label="筛选">
+            <el-input
+              v-model="batchLicenseSearch"
+              clearable
+              placeholder="用户名 / 邮箱 / 姓名"
+              style="width: 260px"
+              @keyup.enter="fetchBatchLicenseCandidates"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" :loading="batchLicenseLoading" @click="fetchBatchLicenseCandidates">查询</el-button>
+          </el-form-item>
+        </el-form>
+        <el-table
+          :data="batchLicenseCandidates"
+          v-loading="batchLicenseLoading"
+          stripe
+          height="420"
+          @selection-change="onBatchSelectionChange"
+        >
+          <el-table-column type="selection" width="52" />
+          <el-table-column prop="user.username" label="用户名" width="140" />
+          <el-table-column label="姓名" width="120">
+            <template #default="scope">{{ scope.row.user.full_name || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="邮箱" min-width="220">
+            <template #default="scope">{{ scope.row.user.email }}</template>
+          </el-table-column>
+          <el-table-column label="当前状态" width="130">
+            <template #default="scope">
+              <el-tag :type="scope.row.currently_authorized ? 'success' : 'info'">
+                {{ scope.row.currently_authorized ? '已授权' : '未授权' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <template #footer>
+          <el-button @click="batchLicenseDialogVisible = false">取消</el-button>
+          <el-button
+            :type="batchLicenseAction === 'grant' ? 'success' : 'danger'"
+            :loading="batchLicenseSubmitting"
+            @click="submitBatchLicenseUpdate"
+          >
+            {{ batchLicenseAction === 'grant' ? '确认批量授权' : '确认批量取消授权' }}
+          </el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -313,6 +366,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { toolsApi } from '@/api/tools'
 import { adminApi } from '@/api/admin'
+import { authApi } from '@/api/auth'
 import { resolveToolDisplayDescription, resolveToolDisplayName } from '@/utils/toolDisplay'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import { resolveManageExtraTabs } from '@/tools/registry'
@@ -321,7 +375,10 @@ import type {
   ToolReleaseInDB,
   APIAccessLogWithUser,
   ToolLicenseUserRow,
+  ToolLicenseCandidateRow,
   FeedbackWithUser,
+  ToolRuntimeStatus,
+  UserInDB,
 } from '@/api/types'
 
 const route = useRoute()
@@ -347,8 +404,17 @@ const accessDenied = ref(false)
 const licenseSearchInput = ref('')
 const appliedLicenseSearch = ref('')
 const statusFormActive = ref(true)
+const statusFormRuntime = ref<ToolRuntimeStatus>('active')
 const savingStatus = ref(false)
 const revokingUserId = ref<number | null>(null)
+const currentUser = ref<UserInDB | null>(null)
+const batchLicenseDialogVisible = ref(false)
+const batchLicenseAction = ref<'grant' | 'revoke'>('grant')
+const batchLicenseSearch = ref('')
+const batchLicenseCandidates = ref<ToolLicenseCandidateRow[]>([])
+const batchLicenseLoading = ref(false)
+const batchLicenseSubmitting = ref(false)
+const batchSelectedUserIds = ref<number[]>([])
 const toolFeedbackRows = ref<FeedbackWithUser[]>([])
 const loadingFeedback = ref(false)
 const feedbackTotal = ref(0)
@@ -363,16 +429,10 @@ const displayForm = ref({
   display_description: '',
 })
 
-const releaseForm = ref({
-  version: '',
-  spec_revision: '',
-  title: '版本更新',
-  changelog: '',
-  notify_users: true,
-})
 const manageReleaseRows = ref<ToolReleaseInDB[]>([])
 const loadingReleases = ref(false)
-const publishingRelease = ref(false)
+const syncingVersionInfo = ref(false)
+const versionSyncNotifyUsers = ref(true)
 const releasePage = ref(1)
 const releasePageSize = ref(10)
 const releaseTotal = ref(0)
@@ -433,6 +493,13 @@ watch(
   () => tool.value?.is_active,
   (v) => {
     if (v !== undefined) statusFormActive.value = v
+  }
+)
+
+watch(
+  () => tool.value?.runtime_status,
+  (v) => {
+    if (v) statusFormRuntime.value = v
   }
 )
 
@@ -503,6 +570,68 @@ const confirmRevokeLicense = async (row: ToolLicenseUserRow) => {
     ElMessage.error(error.message || '取消授权失败')
   } finally {
     revokingUserId.value = null
+  }
+}
+
+const openBatchLicenseDialog = async (action: 'grant' | 'revoke') => {
+  batchLicenseAction.value = action
+  batchLicenseDialogVisible.value = true
+  batchSelectedUserIds.value = []
+  await fetchBatchLicenseCandidates()
+}
+
+const fetchBatchLicenseCandidates = async () => {
+  batchLicenseLoading.value = true
+  try {
+    const response = await adminApi.getToolLicenseCandidates(toolId, 0, 500, {
+      search: batchLicenseSearch.value || undefined,
+    })
+    batchLicenseCandidates.value = response.items.filter((row) => {
+      if (row.user.is_superuser || row.user.is_platform_admin) return false
+      if (currentUser.value && row.user.id === currentUser.value.id) return false
+      return true
+    })
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载批量授权候选用户失败')
+  } finally {
+    batchLicenseLoading.value = false
+  }
+}
+
+const onBatchSelectionChange = (rows: ToolLicenseCandidateRow[]) => {
+  batchSelectedUserIds.value = rows.map((row) => row.user.id)
+}
+
+const submitBatchLicenseUpdate = async () => {
+  if (!batchSelectedUserIds.value.length) {
+    ElMessage.warning('请先勾选至少一个用户')
+    return
+  }
+  const isGrant = batchLicenseAction.value === 'grant'
+  const confirmText = isGrant ? '确定批量授权所选用户使用本工具？' : '确定批量取消所选用户使用本工具权限？'
+  try {
+    await ElMessageBox.confirm(confirmText, isGrant ? '批量授权' : '批量取消授权', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  batchLicenseSubmitting.value = true
+  try {
+    const res = await adminApi.batchUpdateToolUserLicense(toolId, {
+      action: batchLicenseAction.value,
+      user_ids: batchSelectedUserIds.value,
+    })
+    ElMessage.success(`批量处理完成：成功 ${res.changed_count}，跳过 ${res.skipped_count}`)
+    batchLicenseDialogVisible.value = false
+    batchSelectedUserIds.value = []
+    await fetchLicenseUsers()
+  } catch (error: any) {
+    ElMessage.error(error.message || '批量处理失败')
+  } finally {
+    batchLicenseSubmitting.value = false
   }
 }
 
@@ -577,7 +706,7 @@ const fetchManageReleases = async () => {
       releaseTotal.value = 0
       return
     }
-    ElMessage.error(error.message || '加载发版记录失败')
+    ElMessage.error(error.message || '加载版本记录失败')
   } finally {
     loadingReleases.value = false
   }
@@ -594,45 +723,49 @@ const onReleasePageSizeChange = (size: number) => {
   void fetchManageReleases()
 }
 
-const submitRelease = async () => {
-  const v = releaseForm.value.version.trim()
-  const log = releaseForm.value.changelog.trim()
-  if (!v || !log) {
-    ElMessage.warning('请填写新版本号与更新说明')
-    return
-  }
-  publishingRelease.value = true
+const syncVersionInfo = async () => {
+  syncingVersionInfo.value = true
   try {
-    await adminApi.publishToolRelease(toolId, {
-      version: v,
-      spec_revision: releaseForm.value.spec_revision.trim() || undefined,
-      title: releaseForm.value.title.trim() || '版本更新',
-      changelog: log,
-      notify_users: releaseForm.value.notify_users,
+    const res = await adminApi.syncToolVersionRecord(toolId, {
+      notify_users: versionSyncNotifyUsers.value,
     })
     tool.value = await toolsApi.getTool(toolId)
-    releaseForm.value.changelog = ''
-    releaseForm.value.version = ''
-    releaseForm.value.spec_revision = ''
-    ElMessage.success('发版成功')
     releasePage.value = 1
     await fetchManageReleases()
+    if (res.status === 'no_change') {
+      ElMessage.info(res.message || '版本信息无变化')
+    } else {
+      ElMessage.success(res.message || '已同步并记录新版本')
+    }
   } catch (error: any) {
-    ElMessage.error(error.message || '发版失败')
+    ElMessage.error(error.message || '同步版本信息失败')
   } finally {
-    publishingRelease.value = false
+    syncingVersionInfo.value = false
   }
 }
 
 const saveToolStatus = async () => {
   if (!tool.value) return
-  if (statusFormActive.value === tool.value.is_active) {
+  const nextRt: ToolRuntimeStatus = statusFormRuntime.value
+  const prevRt: ToolRuntimeStatus = tool.value.runtime_status || 'active'
+  if (statusFormActive.value === tool.value.is_active && nextRt === prevRt) {
+    ElMessage.info('状态未变更')
+    return
+  }
+  const payload: { is_active?: boolean; runtime_status?: ToolRuntimeStatus } = {}
+  if (statusFormActive.value !== tool.value.is_active) {
+    payload.is_active = statusFormActive.value
+  }
+  if (nextRt !== prevRt) {
+    payload.runtime_status = nextRt
+  }
+  if (Object.keys(payload).length === 0) {
     ElMessage.info('状态未变更')
     return
   }
   savingStatus.value = true
   try {
-    tool.value = await adminApi.updateToolStatus(toolId, statusFormActive.value)
+    tool.value = await adminApi.updateToolStatus(toolId, payload)
     ElMessage.success('工具状态已更新，相关用户将收到通知')
   } catch (error: any) {
     ElMessage.error(error.message || '更新工具状态失败')
@@ -726,8 +859,12 @@ onMounted(async () => {
     ? queryGeneralTab
     : 'status'
   try {
+    currentUser.value = await authApi.getCurrentUser()
     tool.value = await toolsApi.getTool(toolId)
-    if (tool.value) statusFormActive.value = tool.value.is_active
+    if (tool.value) {
+      statusFormActive.value = tool.value.is_active
+      statusFormRuntime.value = tool.value.runtime_status || 'active'
+    }
     accessDenied.value = false
     await fetchLicenseUsers()
     if (!accessDenied.value) {
@@ -780,7 +917,7 @@ onMounted(async () => {
 }
 
 .section-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 12px;
 }
@@ -816,6 +953,34 @@ onMounted(async () => {
 
 .display-form {
   margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+  .tool-manage-page {
+    padding: 12px;
+  }
+
+  .page-header-title {
+    font-size: 16px;
+  }
+
+  .manage-shell-card :deep(.el-card__body) {
+    padding: 8px 10px 12px;
+  }
+
+  .table-pagination {
+    justify-content: flex-start;
+  }
+
+  .tool-manage-page :deep(.el-input),
+  .tool-manage-page :deep(.el-select),
+  .tool-manage-page :deep(.el-date-editor),
+  .tool-manage-page :deep(.el-input-number),
+  .tool-manage-page :deep(.el-textarea),
+  .tool-manage-page :deep(.el-radio-group) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
 }
 
 </style>

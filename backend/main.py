@@ -2,7 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -119,10 +119,31 @@ else:
         os.getenv("TOOLBOX_FRONTEND_DIST", str(BASE_RUNTIME_DIR.parent / "frontend" / "dist"))
     )
 
+def _toolbox_spa_enabled() -> bool:
+    """关闭 SPA 时仅暴露 API（/api、/static、/health），供 Caddy 等反代拆分部署。"""
+    return os.getenv("TOOLBOX_DISABLE_SPA", "").strip().lower() not in ("1", "true", "yes")
+
+
+SPA_ENABLED = _toolbox_spa_enabled()
+
+_INDEX_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+}
+
+
+def _index_html_file_response() -> FileResponse:
+    """index.html 必须禁用强缓存，否则新部署后浏览器仍用旧入口 JS，会引用已不存在的 chunk（按钮无反应）。"""
+    return FileResponse(
+        FRONTEND_DIST_DIR / "index.html",
+        headers=dict(_INDEX_NO_CACHE_HEADERS),
+    )
+
+
 STATIC_DIR = Path(os.getenv("TOOLBOX_STATIC_DIR", str(BASE_RUNTIME_DIR / "static")))
 os.makedirs(STATIC_DIR / "avatars", exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-if (FRONTEND_DIST_DIR / "assets").exists():
+if SPA_ENABLED and (FRONTEND_DIST_DIR / "assets").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST_DIR / "assets"), name="frontend-assets")
 
 
@@ -214,29 +235,47 @@ async def audit_log_middleware(request, call_next):
     )
     return response
 
-@app.get("/")
-async def root():
-    index_file = FRONTEND_DIST_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
-    return {"message": "Tools Platform API", "status": "running"}
+
+@app.middleware("http")
+async def vite_hashed_asset_cache_headers(request: Request, call_next):
+    """带内容哈希的 /assets/* 可长期缓存；与 index no-cache 配合避免新旧 chunk 混用。"""
+    response = await call_next(request)
+    if request.method != "GET":
+        return response
+    if request.url.path.startswith("/assets/") and response.status_code in (200, 304):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
 
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
 
-@app.get("/{full_path:path}")
-async def spa_fallback(full_path: str):
-    if full_path.startswith("api/") or full_path.startswith("static/"):
-        raise HTTPException(status_code=404, detail="Not found")
-    requested_file = FRONTEND_DIST_DIR / full_path
-    if requested_file.exists() and requested_file.is_file():
-        return FileResponse(requested_file)
-    index_file = FRONTEND_DIST_DIR / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
-    raise HTTPException(
-        status_code=404,
-        detail="Frontend dist not found. Build frontend before running packaged app.",
-    )
+if SPA_ENABLED:
+
+    @app.get("/")
+    async def root():
+        if (FRONTEND_DIST_DIR / "index.html").exists():
+            return _index_html_file_response()
+        return {"message": "Tools Platform API", "status": "running"}
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("static/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        requested_file = FRONTEND_DIST_DIR / full_path
+        if requested_file.exists() and requested_file.is_file():
+            return FileResponse(requested_file)
+        if (FRONTEND_DIST_DIR / "index.html").exists():
+            return _index_html_file_response()
+        raise HTTPException(
+            status_code=404,
+            detail="Frontend dist not found. Build frontend before running packaged app.",
+        )
+
+else:
+
+    @app.get("/")
+    async def root_api_only():
+        return {"message": "Tools Platform API", "status": "running", "spa_enabled": False}

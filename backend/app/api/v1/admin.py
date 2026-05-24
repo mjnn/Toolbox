@@ -1,59 +1,36 @@
-import csv
 import io
 import json
 import os
 import re
+import subprocess
+import threading
 import time
 from typing import List, Literal
 from pathlib import Path
-from urllib.parse import urlparse
 
-from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from openpyxl import Workbook, load_workbook
 from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.database import get_session
 from app.models import (
-    UserToolPermission,
     Tool,
-    ToolRelease,
     User,
     PermissionStatus,
     Notification,
-    ToolOwner,
     ToolDisplayConfig,
     Role,
     UserRole,
     APIAccessLog,
-    Feedback,
-    FeedbackCategory,
     ToolAnnouncement,
+    ToolRuntimeStatus,
 )
 from app.schemas import (
-    AdminUserImportIssue,
-    AdminUserImportResponse,
-    AdminResetPasswordRequest,
-    PermissionWithDetails,
-    PermissionUpdate,
     SuccessResponse,
     ToolInDB,
-    ToolOwnerWithUser,
-    ToolLicenseUserRow,
-    PaginatedToolLicenseUsers,
     ToolStatusUpdate,
-    RoleAssignmentRequest,
-    UserRolesResponse,
-    APIAccessLogWithUser,
-    PaginatedAPIAccessLogs,
-    FeedbackWithUser,
-    PaginatedFeedbackWithUser,
-    FeedbackCountsResponse,
     UserInDB,
-    ToolReleasePublish,
-    ToolReleaseInDB,
     ToolAnnouncementCreate,
     ToolAnnouncementInDB,
     ToolAnnouncementUpdate,
@@ -62,18 +39,22 @@ from app.schemas import (
     MosDbOptimizationUpdateRequest,
     ToolVisibilityConfigUpdate,
     ToolVisibilityConfigResponse,
+    ToolTrafficDashboardResponse,
+    ToolTrafficRow,
+    EnvFilePayload,
+    BackendRestartRequest,
 )
-from app.core.config_simple import BACKEND_ROOT, DATABASE_URL
+from app.core.config_simple import BACKEND_ROOT
 from app.api.v1.users import get_current_active_user
-from app.api.v1.auth import get_password_hash
+from app.api.v1.rbac import ensure_platform_staff, ensure_super_admin, has_role
+from app.api.v1.admin_common import ensure_tool_governance, recipient_user_ids_for_tool
 from app.core.tool_visibility import (
     load_tool_visibility_config,
     resolve_runtime_environment,
     save_tool_visibility_config,
 )
-from app.services.user_deletion import delete_user_and_related
-from app.services.tool_behavior_catalog import resolve_behavior_label_from_tool
-from datetime import datetime, timezone
+from app.services import db_optimization_runtime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 router = APIRouter()
@@ -81,43 +62,6 @@ router = APIRouter()
 _TZ_CN = ZoneInfo("Asia/Shanghai")
 _ANNOUNCEMENT_PRIORITIES = {"urgent", "notice", "reminder"}
 _GLOBAL_ANNOUNCEMENT_TOOL_NAME = "mos-integration-toolbox"
-_DB_OPTIMIZATION_FILE = Path(BACKEND_ROOT) / "runtime" / "db_optimization.json"
-
-
-def _format_ts_cst8(dt: datetime | None) -> str:
-    """API / DB 中 naive UTC 时刻 → 东八区展示字符串（与前端 Intl Asia/Shanghai 一致）。"""
-    if dt is None:
-        return ""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(_TZ_CN).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def get_role_by_name(db: Session, role_name: str) -> Role:
-    role = db.exec(select(Role).where(Role.name == role_name)).first()
-    if not role:
-        raise HTTPException(status_code=404, detail=f"角色不存在：{role_name}")
-    return role
-
-
-def user_has_role(db: Session, user_id: int, role_name: str) -> bool:
-    role = db.exec(select(Role).where(Role.name == role_name)).first()
-    if not role:
-        return False
-    return db.exec(
-        select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role.id)
-    ).first() is not None
-
-
-def user_is_tool_owner(db: Session, user_id: int, tool_id: int) -> bool:
-    return db.exec(
-        select(ToolOwner).where(ToolOwner.user_id == user_id, ToolOwner.tool_id == tool_id)
-    ).first() is not None
-
-
-def ensure_admin(current_user: User):
-    if not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="仅管理员可执行该操作")
 
 
 def _is_announcement_active(row: ToolAnnouncement, now: datetime) -> bool:
@@ -181,67 +125,6 @@ def _resolve_global_announcement_tool_id(db: Session) -> int:
     return int(tool.id)
 
 
-def _normalize_excel_header(value: object) -> str:
-    text = str(value or "").strip().lower()
-    return re.sub(r"[\s_\-]+", "", text)
-
-
-def _mask_database_url(raw: str) -> str:
-    text = (raw or "").strip()
-    if not text:
-        return ""
-    parsed = urlparse(text)
-    if parsed.password:
-        return text.replace(f":{parsed.password}@", ":***@")
-    return text
-
-
-def _is_remote_database_url(raw: str) -> bool:
-    parsed = urlparse((raw or "").strip())
-    host = (parsed.hostname or "").lower()
-    return bool(host and host not in {"localhost", "127.0.0.1", "::1"})
-
-
-def _load_db_optimization_overrides() -> dict[str, int]:
-    if not _DB_OPTIMIZATION_FILE.exists():
-        return {}
-    try:
-        raw = json.loads(_DB_OPTIMIZATION_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    result: dict[str, int] = {}
-    for key in ("pool_size", "max_overflow", "pool_timeout_seconds", "pool_recycle_seconds", "workers", "statement_timeout_ms"):
-        value = raw.get(key)
-        if isinstance(value, int):
-            result[key] = value
-    return result
-
-
-def _save_db_optimization_overrides(data: dict[str, int]) -> None:
-    _DB_OPTIMIZATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _DB_OPTIMIZATION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _upsert_env_lines(env_path: Path, updates: dict[str, int]) -> None:
-    rows: list[str] = []
-    if env_path.exists():
-        rows = env_path.read_text(encoding="utf-8").splitlines()
-    for key, value in updates.items():
-        line = f"{key}={value}"
-        found = False
-        for idx, existing in enumerate(rows):
-            if existing.strip().startswith(f"{key}="):
-                rows[idx] = line
-                found = True
-                break
-        if not found:
-            rows.append(line)
-    payload = "\n".join(rows).strip()
-    env_path.write_text(payload + "\n", encoding="utf-8")
-
-
 def _split_hosts(raw_hosts: list[str] | None) -> list[str]:
     if not raw_hosts:
         return []
@@ -284,45 +167,6 @@ def _tool_visibility_response(
     )
 
 
-def _sanitize_username(raw: str) -> str:
-    text = re.sub(r"[^a-zA-Z0-9_.-]+", "-", raw.strip().lower()).strip("-._")
-    return text[:50] if text else "user"
-
-
-def _pick_username(base: str, used_usernames: set[str], db: Session) -> str:
-    base_candidate = _sanitize_username(base)
-    candidate = base_candidate
-    suffix = 1
-    while True:
-        if candidate not in used_usernames:
-            exists = db.exec(select(User.id).where(User.username == candidate)).first()
-            if not exists:
-                used_usernames.add(candidate)
-                return candidate
-        suffix += 1
-        clipped = base_candidate[:40] if len(base_candidate) > 40 else base_candidate
-        candidate = f"{clipped}-{suffix}"
-
-
-def _extract_email(raw: object) -> str:
-    email = str(raw or "").strip().lower()
-    if not email:
-        raise ValueError("邮箱为空")
-    try:
-        normalized = validate_email(email, check_deliverability=False)
-    except EmailNotValidError as exc:
-        raise ValueError(f"邮箱格式非法：{exc}") from exc
-    return normalized.normalized
-
-
-def ensure_permission_reviewer(db: Session, current_user: User, tool_id: int):
-    if current_user.is_superuser:
-        return
-    if user_is_tool_owner(db, current_user.id, tool_id):
-        return
-    raise HTTPException(status_code=403, detail="仅工具负责人可审核该权限")
-
-
 def _build_tool_schema(db: Session, tool: Tool) -> ToolInDB:
     cfg = db.exec(select(ToolDisplayConfig).where(ToolDisplayConfig.tool_id == tool.id)).first()
     return ToolInDB(
@@ -335,34 +179,8 @@ def _build_tool_schema(db: Session, tool: Tool) -> ToolInDB:
         spec_revision=tool.spec_revision,
         behavior_catalog_json=tool.behavior_catalog_json,
         is_active=tool.is_active,
+        runtime_status=tool.runtime_status,
         created_at=tool.created_at,
-    )
-
-
-def build_access_log_item(db: Session, access_log: APIAccessLog) -> APIAccessLogWithUser:
-    user = db.get(User, access_log.user_id) if access_log.user_id else None
-    data = access_log.dict()
-    bl = data.get("behavior_label")
-    if not bl and access_log.tool_id and access_log.feature_name:
-        tool = db.get(Tool, access_log.tool_id)
-        data["behavior_label"] = resolve_behavior_label_from_tool(tool, access_log.feature_name)
-    return APIAccessLogWithUser(**data, user=user)
-
-
-def build_feedback_with_user(db: Session, fb: Feedback) -> FeedbackWithUser:
-    user = db.get(User, fb.user_id)
-    if not user:
-        raise HTTPException(status_code=500, detail="反馈数据异常：用户不存在")
-    u = UserInDB.model_validate(user)
-    return FeedbackWithUser(
-        id=fb.id,
-        user_id=fb.user_id,
-        tool_id=fb.tool_id,
-        category=fb.category,
-        title=fb.title,
-        content=fb.content,
-        created_at=fb.created_at,
-        user=u,
     )
 
 
@@ -374,7 +192,7 @@ async def list_global_announcements(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
+    ensure_super_admin(current_user)
     limit = min(max(limit, 1), 200)
     rows = db.exec(
         select(ToolAnnouncement)
@@ -398,7 +216,7 @@ async def create_global_announcement(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
+    ensure_super_admin(current_user)
     tool_id = _resolve_global_announcement_tool_id(db)
     if body.end_at and body.start_at and body.end_at < body.start_at:
         raise HTTPException(status_code=400, detail="结束时间不能早于开始时间")
@@ -455,7 +273,7 @@ async def update_global_announcement(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
+    ensure_super_admin(current_user)
     tool_id = _resolve_global_announcement_tool_id(db)
     row = db.get(ToolAnnouncement, announcement_id)
     if not row or (row.visibility or "global") != "global":
@@ -496,86 +314,24 @@ async def update_global_announcement(
 @router.get("/system/db-optimization", response_model=dict)
 async def get_system_db_optimization(
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
-    overrides = _load_db_optimization_overrides()
-    env_current = {
-        "SQLALCHEMY_POOL_SIZE": int(os.getenv("SQLALCHEMY_POOL_SIZE", "4")),
-        "SQLALCHEMY_MAX_OVERFLOW": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2")),
-        "SQLALCHEMY_POOL_TIMEOUT": int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30")),
-        "SQLALCHEMY_POOL_RECYCLE": int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800")),
-        "TOOLBOX_WORKERS": int(os.getenv("TOOLBOX_WORKERS", "2")),
-        "SQLALCHEMY_STATEMENT_TIMEOUT_MS": int(os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000")),
-    }
-    recommendation = {
-        "pool_size": max(4, env_current["SQLALCHEMY_POOL_SIZE"]),
-        "max_overflow": max(2, env_current["SQLALCHEMY_MAX_OVERFLOW"]),
-        "pool_timeout_seconds": max(30, env_current["SQLALCHEMY_POOL_TIMEOUT"]),
-        "pool_recycle_seconds": max(1800, env_current["SQLALCHEMY_POOL_RECYCLE"]),
-        "workers": max(2, env_current["TOOLBOX_WORKERS"]),
-        "statement_timeout_ms": max(15000, env_current["SQLALCHEMY_STATEMENT_TIMEOUT_MS"]),
-    }
-    return {
-        "database_url_masked": _mask_database_url(DATABASE_URL),
-        "is_remote_database": _is_remote_database_url(DATABASE_URL),
-        "current_env": env_current,
-        "saved_overrides": overrides,
-        "recommendation": recommendation,
-        "requires_restart": True,
-        "note": "保存后将写入 backend/.env，需重启后端进程生效。",
-    }
+    _ = db
+    ensure_super_admin(current_user)
+    return db_optimization_runtime.build_db_optimization_read_payload(
+        note="调参请在「系统配置」编辑 .env 并按规定重启后端，或维护期人工编辑部署机配置；修改后需重启后端进程生效。",
+    )
 
 
 @router.put("/system/db-optimization", response_model=dict)
 async def update_system_db_optimization(
     body: MosDbOptimizationUpdateRequest,
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
-    updates: dict[str, int] = {}
-    if body.pool_size is not None:
-        updates["pool_size"] = body.pool_size
-    if body.max_overflow is not None:
-        updates["max_overflow"] = body.max_overflow
-    if body.pool_timeout_seconds is not None:
-        updates["pool_timeout_seconds"] = body.pool_timeout_seconds
-    if body.pool_recycle_seconds is not None:
-        updates["pool_recycle_seconds"] = body.pool_recycle_seconds
-    if body.workers is not None:
-        updates["workers"] = body.workers
-    if body.statement_timeout_ms is not None:
-        updates["statement_timeout_ms"] = body.statement_timeout_ms
-    if not updates:
-        raise HTTPException(status_code=400, detail="至少提交一项数据库优化参数")
-
-    saved = _load_db_optimization_overrides()
-    saved.update(updates)
-    _save_db_optimization_overrides(saved)
-
-    if body.apply_to_env:
-        effective = {
-            "pool_size": int(saved.get("pool_size", os.getenv("SQLALCHEMY_POOL_SIZE", "4"))),
-            "max_overflow": int(saved.get("max_overflow", os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))),
-            "pool_timeout_seconds": int(saved.get("pool_timeout_seconds", os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30"))),
-            "pool_recycle_seconds": int(saved.get("pool_recycle_seconds", os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800"))),
-            "workers": int(saved.get("workers", os.getenv("TOOLBOX_WORKERS", "2"))),
-            "statement_timeout_ms": int(saved.get("statement_timeout_ms", os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000"))),
-        }
-        env_updates = {
-            "SQLALCHEMY_POOL_SIZE": effective["pool_size"],
-            "SQLALCHEMY_MAX_OVERFLOW": effective["max_overflow"],
-            "SQLALCHEMY_POOL_TIMEOUT": effective["pool_timeout_seconds"],
-            "SQLALCHEMY_POOL_RECYCLE": effective["pool_recycle_seconds"],
-            "TOOLBOX_WORKERS": effective["workers"],
-            "SQLALCHEMY_STATEMENT_TIMEOUT_MS": effective["statement_timeout_ms"],
-        }
-        _upsert_env_lines(Path(BACKEND_ROOT) / ".env", env_updates)
-
-    return {
-        "saved_overrides": saved,
-        "applied_to_env": body.apply_to_env,
-        "requires_restart": True,
-    }
+    _ = db
+    ensure_super_admin(current_user)
+    return db_optimization_runtime.apply_db_optimization_update(body)
 
 
 @router.post("/system/db-optimization/ping", response_model=dict)
@@ -583,11 +339,8 @@ async def ping_system_db_optimization(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
-    started = time.perf_counter()
-    db.exec(select(1)).first()
-    elapsed_ms = int((time.perf_counter() - started) * 1000)
-    return {"elapsed_ms": elapsed_ms}
+    ensure_super_admin(current_user)
+    return {"elapsed_ms": db_optimization_runtime.ping_database_ms(db)}
 
 
 @router.get("/system/tool-visibility", response_model=ToolVisibilityConfigResponse)
@@ -596,7 +349,7 @@ async def get_system_tool_visibility(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
+    ensure_super_admin(current_user)
     cfg = load_tool_visibility_config()
     return _tool_visibility_response(db, request, cfg)
 
@@ -608,7 +361,7 @@ async def update_system_tool_visibility(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
+    ensure_super_admin(current_user)
     cfg = load_tool_visibility_config()
 
     existing_names = {str(t.name).strip() for t in _load_all_tools_sorted(db)}
@@ -645,422 +398,148 @@ async def update_system_tool_visibility(
     return _tool_visibility_response(db, request, saved)
 
 
-@router.get("/users/{user_id}/roles", response_model=UserRolesResponse)
-async def get_user_roles(
-    user_id: int,
+def _staff_excluded_user_ids(db: Session) -> set[int]:
+    """工具访问量统计需排除：超级管理员 + 平台管理员（自身操作不计入业务流量）。"""
+    ids: set[int] = set()
+    for u in db.exec(select(User).where(User.is_superuser == True)).all():  # noqa: E712
+        if u.id is not None:
+            ids.add(int(u.id))
+    role = db.exec(select(Role).where(Role.name == "platform_admin")).first()
+    if role:
+        for ur in db.exec(select(UserRole).where(UserRole.role_id == role.id)).all():
+            ids.add(int(ur.user_id))
+    return ids
+
+
+_ENV_FILE_PATH = Path(BACKEND_ROOT) / ".env"
+
+
+@router.get("/analytics/tool-traffic", response_model=ToolTrafficDashboardResponse)
+async def get_tool_traffic_dashboard(
+    period: Literal["day", "week", "month"] = "day",
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    ensure_admin(current_user)
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
+    """按日/周/月汇总各工具 API 请求量（有 tool_id 的访问日志），排除超管与平台管理员自身。"""
+    ensure_platform_staff(db, current_user)
+    end = datetime.utcnow()
+    if period == "day":
+        start = end - timedelta(days=1)
+    elif period == "week":
+        start = end - timedelta(days=7)
+    else:
+        start = end - timedelta(days=30)
 
-    roles = db.exec(
-        select(Role.name).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == user_id)
-    ).all()
-    return UserRolesResponse(user_id=user_id, roles=roles)
-
-
-@router.post("/users/{user_id}/approve", response_model=UserInDB)
-async def approve_user_registration(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    """通过待审核用户的注册申请，通过后用户方可登录。"""
-    ensure_admin(current_user)
-    u = db.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    if u.is_approved:
-        raise HTTPException(status_code=400, detail="用户已审核通过")
-    u.is_approved = True
-    db.add(u)
-    db.commit()
-    db.refresh(u)
-    db.add(
-        Notification(
-            user_id=u.id,
-            title="注册审核已通过",
-            message="您的账号已通过审核，现在可以正常登录并使用系统。",
-            notification_type="system",
-            related_id=u.id,
+    excluded = _staff_excluded_user_ids(db)
+    stmt = (
+        select(APIAccessLog.tool_id, func.count(APIAccessLog.id))
+        .where(
+            APIAccessLog.tool_id != None,  # noqa: E711
+            APIAccessLog.created_at >= start,
+            APIAccessLog.created_at <= end,
         )
     )
-    db.commit()
-    return UserInDB.model_validate(u)
-
-
-@router.post("/users/{user_id}/reset-password", response_model=SuccessResponse)
-async def reset_user_password_by_admin(
-    user_id: int,
-    payload: AdminResetPasswordRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    """管理员重置指定用户密码（用于忘记密码场景）。"""
-    ensure_admin(current_user)
-    u = db.get(User, user_id)
-    if not u:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    if not u.is_active:
-        raise HTTPException(status_code=400, detail="用户已禁用，无法重置密码")
-
-    u.hashed_password = get_password_hash(payload.new_password)
-    u.updated_at = datetime.utcnow()
-    db.add(u)
-    db.add(
-        Notification(
-            user_id=u.id,
-            title="账号密码已被管理员重置",
-            message="您的账号密码已被管理员重置，请联系管理员获取新密码并尽快在个人资料页修改。",
-            notification_type="system",
-            related_id=u.id,
+    if excluded:
+        stmt = stmt.where(
+            or_(APIAccessLog.user_id == None, ~APIAccessLog.user_id.in_(list(excluded)))  # noqa: E711
         )
+    stmt = stmt.group_by(APIAccessLog.tool_id).order_by(func.count(APIAccessLog.id).desc())
+    raw_rows = db.exec(stmt).all()
+    out: list[ToolTrafficRow] = []
+    for row in raw_rows:
+        tid = int(row[0])
+        cnt = int(row[1])
+        tool = db.get(Tool, tid)
+        out.append(
+            ToolTrafficRow(
+                tool_id=tid,
+                tool_name=tool.name if tool else str(tid),
+                request_count=cnt,
+            )
+        )
+    return ToolTrafficDashboardResponse(
+        period=period,
+        range_start=start,
+        range_end=end,
+        rows=out,
     )
-    db.commit()
-    return SuccessResponse(message=f"用户「{u.username}」密码已重置")
 
 
-@router.post("/users/import-excel", response_model=AdminUserImportResponse)
-async def import_users_from_excel(
-    file: UploadFile = File(...),
+@router.get("/system/env-file", response_model=EnvFilePayload)
+async def get_env_file(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    """管理员通过 Excel 批量创建普通用户（默认已审核通过，初始密码=邮箱）。"""
-    ensure_admin(current_user)
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="请上传 Excel 文件")
-    filename = file.filename.lower()
-    if not (filename.endswith(".xlsx") or filename.endswith(".xlsm")):
-        raise HTTPException(status_code=400, detail="仅支持 .xlsx / .xlsm 文件")
-
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="上传文件为空")
-
+    _ = db
+    ensure_super_admin(current_user)
+    path = _ENV_FILE_PATH
+    if not path.exists():
+        return EnvFilePayload(content="")
     try:
-        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail=f"读取 Excel 失败：{exc}") from exc
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"读取 .env 失败：{exc}") from exc
+    return EnvFilePayload(content=text)
 
+
+@router.put("/system/env-file", response_model=SuccessResponse)
+async def put_env_file(
+    body: EnvFilePayload,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    _ = db
+    ensure_super_admin(current_user)
+    path = _ENV_FILE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     try:
-        sheet = workbook.active
-        row_iter = sheet.iter_rows(values_only=True)
-        header = next(row_iter, None)
-        if not header:
-            raise HTTPException(status_code=400, detail="Excel 缺少表头")
-
-        header_aliases = {
-            "username": "username",
-            "用户名": "username",
-            "账号": "username",
-            "user": "username",
-            "email": "email",
-            "邮箱": "email",
-            "mail": "email",
-            "fullname": "full_name",
-            "name": "full_name",
-            "姓名": "full_name",
-            "department": "department",
-            "dept": "department",
-            "部门": "department",
-        }
-        col_index: dict[str, int] = {}
-        for idx, raw in enumerate(header):
-            key = header_aliases.get(_normalize_excel_header(raw))
-            if key and key not in col_index:
-                col_index[key] = idx
-        if "email" not in col_index:
-            raise HTTPException(status_code=400, detail="表头缺少邮箱列（email/邮箱）")
-
-        tool_user_role = get_role_by_name(db, "tool_user")
-        used_emails: set[str] = set()
-        used_usernames: set[str] = set()
-        created_users: list[UserInDB] = []
-        skipped_items: list[AdminUserImportIssue] = []
-        total_rows = 0
-
-        for row_num, row in enumerate(row_iter, start=2):
-            if not row:
-                continue
-            email_raw = row[col_index["email"]] if col_index["email"] < len(row) else None
-            username_raw = (
-                row[col_index["username"]]
-                if "username" in col_index and col_index["username"] < len(row)
-                else None
-            )
-            full_name_raw = (
-                row[col_index["full_name"]]
-                if "full_name" in col_index and col_index["full_name"] < len(row)
-                else None
-            )
-            department_raw = (
-                row[col_index["department"]]
-                if "department" in col_index and col_index["department"] < len(row)
-                else None
-            )
-            if all(str(item or "").strip() == "" for item in [email_raw, username_raw, full_name_raw, department_raw]):
-                continue
-            total_rows += 1
-
+        tmp.write_text(body.content, encoding="utf-8", newline="\n")
+        tmp.replace(path)
+    except OSError as exc:
+        if tmp.exists():
             try:
-                email = _extract_email(email_raw)
-            except ValueError as exc:
-                skipped_items.append(
-                    AdminUserImportIssue(row=row_num, email=str(email_raw or ""), reason=str(exc))
-                )
-                continue
-            if email in used_emails:
-                skipped_items.append(
-                    AdminUserImportIssue(row=row_num, email=email, reason="文件内邮箱重复")
-                )
-                continue
-            email_exists = db.exec(select(User.id).where(User.email == email)).first()
-            if email_exists:
-                skipped_items.append(
-                    AdminUserImportIssue(row=row_num, email=email, reason="邮箱已存在")
-                )
-                continue
-
-            username_seed = str(username_raw or "").strip()
-            if not username_seed:
-                username_seed = email.split("@", 1)[0]
-            username = _pick_username(username_seed, used_usernames, db)
-            full_name = str(full_name_raw or "").strip() or username
-            department = str(department_raw or "").strip() or "未分配"
-
-            row_user = User(
-                username=username,
-                email=email,
-                hashed_password=get_password_hash(email),
-                full_name=full_name,
-                department=department,
-                is_active=True,
-                is_superuser=False,
-                is_approved=True,
-            )
-            db.add(row_user)
-            db.flush()
-            db.add(UserRole(user_id=row_user.id, role_id=tool_user_role.id))
-            used_emails.add(email)
-            created_users.append(UserInDB.model_validate(row_user))
-
-        db.commit()
-        return AdminUserImportResponse(
-            total_rows=total_rows,
-            created_count=len(created_users),
-            skipped_count=len(skipped_items),
-            created_users=created_users,
-            skipped_items=skipped_items,
-        )
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"批量导入失败：{exc}") from exc
-    finally:
-        workbook.close()
+                tmp.unlink()
+            except OSError:
+                pass
+        raise HTTPException(status_code=500, detail=f"写入 .env 失败：{exc}") from exc
+    return SuccessResponse(message=".env 已保存；部分配置需重启后端进程后生效。")
 
 
-@router.get("/users/import-excel/template")
-async def download_user_import_template(
-    current_user: User = Depends(get_current_active_user),
-):
-    """下载批量导入普通用户的 Excel 模板。"""
-    ensure_admin(current_user)
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "users"
-    ws.append(["邮箱", "用户名", "姓名", "部门"])
-    ws.append(["alice@example.com", "alice", "Alice", "研发部"])
-    ws.append(["bob@example.com", "", "Bob", "测试部"])
-    ws.column_dimensions["A"].width = 28
-    ws.column_dimensions["B"].width = 18
-    ws.column_dimensions["C"].width = 16
-    ws.column_dimensions["D"].width = 16
-    output = io.BytesIO()
-    wb.save(output)
-    wb.close()
-    output.seek(0)
-    return StreamingResponse(
-        output,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="user-import-template.xlsx"'},
-    )
+def _run_backend_restart_command() -> None:
+    time.sleep(0.5)
+    cmd = (os.environ.get("TOOLBOX_BACKEND_RESTART_CMD") or "").strip()
+    if not cmd:
+        return
+    try:
+        subprocess.Popen(cmd, shell=True)  # noqa: S602
+    except OSError:
+        pass
 
 
-@router.delete("/users/{user_id}", response_model=SuccessResponse)
-async def admin_delete_user(
-    user_id: int,
+@router.post("/system/backend/restart", response_model=SuccessResponse)
+async def restart_backend_process(
+    body: BackendRestartRequest,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    """管理员注销其他用户账号（不可注销自己，需使用个人资料中的注销）。"""
-    ensure_admin(current_user)
-    if user_id == current_user.id:
+    """触发外部重启命令（需配置 TOOLBOX_BACKEND_RESTART_CMD，如 nssm/systemctl 包装脚本）。"""
+    _ = db
+    ensure_super_admin(current_user)
+    expected = "CONFIRM_BACKEND_RESTART"
+    if (body.confirmation or "").strip() != expected:
         raise HTTPException(
             status_code=400,
-            detail="不能在此删除自己，请前往个人资料页注销账号",
+            detail=f'确认码不正确，请提交 confirmation="{expected}"',
         )
-    target = db.get(User, user_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    if target.is_superuser:
+    cmd = (os.environ.get("TOOLBOX_BACKEND_RESTART_CMD") or "").strip()
+    if not cmd:
         raise HTTPException(
             status_code=400,
-            detail="超管账号不可通过管理接口注销，请先取消该用户的超管权限",
+            detail="未配置环境变量 TOOLBOX_BACKEND_RESTART_CMD，无法从页面触发自动重启。请在服务器进程管理器中手动重启后端。",
         )
-    delete_user_and_related(db, user_id)
-    return SuccessResponse(message="用户已删除")
-
-
-@router.post("/users/{user_id}/roles", response_model=SuccessResponse)
-async def assign_user_role(
-    user_id: int,
-    payload: RoleAssignmentRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
-    role = get_role_by_name(db, payload.role_name)
-    exists = db.exec(
-        select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role.id)
-    ).first()
-    if exists:
-        return SuccessResponse(message=f"角色「{payload.role_name}」已分配")
-
-    db.add(UserRole(user_id=user_id, role_id=role.id))
-    db.commit()
-    return SuccessResponse(message=f"角色「{payload.role_name}」分配成功")
-
-
-@router.delete("/users/{user_id}/roles/{role_name}", response_model=SuccessResponse)
-async def revoke_user_role(
-    user_id: int,
-    role_name: str,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    role = get_role_by_name(db, role_name)
-    user_role = db.exec(
-        select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role.id)
-    ).first()
-    if not user_role:
-        raise HTTPException(status_code=404, detail="未找到角色分配关系")
-
-    db.delete(user_role)
-    db.commit()
-    return SuccessResponse(message=f"角色「{role_name}」撤销成功")
-
-
-@router.get("/tools/{tool_id}/owners", response_model=List[ToolOwnerWithUser])
-async def list_tool_owners(
-    tool_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-
-    owners = db.exec(select(ToolOwner).where(ToolOwner.tool_id == tool_id)).all()
-    result = []
-    for owner in owners:
-        user = db.get(User, owner.user_id)
-        if user:
-            result.append(ToolOwnerWithUser(**owner.dict(), user=user))
-    return result
-
-
-@router.post("/tools/{tool_id}/owners/{user_id}", response_model=SuccessResponse)
-async def assign_tool_owner(
-    tool_id: int,
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
-    exists = db.exec(
-        select(ToolOwner).where(ToolOwner.tool_id == tool_id, ToolOwner.user_id == user_id)
-    ).first()
-    if exists:
-        return SuccessResponse(message="工具负责人已分配")
-
-    db.add(ToolOwner(tool_id=tool_id, user_id=user_id))
-
-    role = get_role_by_name(db, "tool_owner")
-    role_exists = db.exec(
-        select(UserRole).where(UserRole.user_id == user_id, UserRole.role_id == role.id)
-    ).first()
-    if not role_exists:
-        db.add(UserRole(user_id=user_id, role_id=role.id))
-
-    db.commit()
-    return SuccessResponse(message="工具负责人分配成功")
-
-
-@router.delete("/tools/{tool_id}/owners/{user_id}", response_model=SuccessResponse)
-async def remove_tool_owner(
-    tool_id: int,
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    mapping = db.exec(
-        select(ToolOwner).where(ToolOwner.tool_id == tool_id, ToolOwner.user_id == user_id)
-    ).first()
-    if not mapping:
-        raise HTTPException(status_code=404, detail="未找到工具负责人分配关系")
-
-    db.delete(mapping)
-    db.commit()
-    return SuccessResponse(message="工具负责人移除成功")
-
-
-@router.get("/my-owner-tools", response_model=List[int])
-async def get_my_owner_tools(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    if current_user.is_superuser:
-        return []
-    tool_ids = db.exec(
-        select(ToolOwner.tool_id).where(ToolOwner.user_id == current_user.id)
-    ).all()
-    return tool_ids
-
-
-def _recipient_user_ids_for_tool(db: Session, tool_id: int) -> set[int]:
-    """已获批用户 + 工具负责人（用于状态变更通知）"""
-    s: set[int] = set()
-    for p in db.exec(
-        select(UserToolPermission).where(
-            UserToolPermission.tool_id == tool_id,
-            UserToolPermission.status == PermissionStatus.APPROVED,
-        )
-    ).all():
-        s.add(p.user_id)
-    for o in db.exec(select(ToolOwner).where(ToolOwner.tool_id == tool_id)).all():
-        s.add(o.user_id)
-    return s
+    threading.Thread(target=_run_backend_restart_command, daemon=True).start()
+    return SuccessResponse(message="重启命令已提交，请稍候由外部拉起新进程。")
 
 
 @router.patch("/tools/{tool_id}/status", response_model=ToolInDB)
@@ -1073,23 +552,36 @@ async def update_tool_status(
     tool = db.get(Tool, tool_id)
     if not tool:
         raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
+    ensure_tool_governance(db, current_user, tool_id)
 
-    if tool.is_active == body.is_active:
+    changed = False
+    if body.is_active is not None and tool.is_active != body.is_active:
+        tool.is_active = body.is_active
+        changed = True
+    if body.runtime_status is not None and tool.runtime_status != body.runtime_status:
+        tool.runtime_status = body.runtime_status
+        changed = True
+    if not changed:
         return _build_tool_schema(db, tool)
 
-    tool.is_active = body.is_active
     db.add(tool)
     db.commit()
     db.refresh(tool)
 
-    status_label = "可用" if tool.is_active else "暂不可用"
-    for uid in _recipient_user_ids_for_tool(db, tool_id):
+    parts: list[str] = []
+    if body.is_active is not None:
+        parts.append("可用" if tool.is_active else "暂不可用")
+    if body.runtime_status is not None:
+        parts.append(
+            "运行中" if tool.runtime_status == ToolRuntimeStatus.ACTIVE else "更新中"
+        )
+    status_label = "；".join(parts) if parts else "已更新"
+    for uid in recipient_user_ids_for_tool(db, tool_id):
         db.add(
             Notification(
                 user_id=uid,
                 title=f"工具「{tool.name}」状态变更",
-                message=f"工具「{tool.name}」当前状态为「{status_label}」。",
+                message=f"工具「{tool.name}」当前状态：{status_label}。",
                 notification_type="tool",
                 related_id=tool_id,
             )
@@ -1108,7 +600,7 @@ async def update_tool_display_config(
     tool = db.get(Tool, tool_id)
     if not tool:
         raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
+    ensure_tool_governance(db, current_user, tool_id)
 
     display_name = body.display_name.strip() if body.display_name is not None else None
     display_description = body.display_description.strip() if body.display_description is not None else None
@@ -1143,622 +635,3 @@ async def update_tool_display_config(
     return _build_tool_schema(db, tool)
 
 
-@router.get("/tools/{tool_id}/usage-logs", response_model=PaginatedAPIAccessLogs)
-async def get_tool_usage_logs(
-    tool_id: int,
-    skip: int = 0,
-    limit: int = 100,
-    username: str | None = None,
-    q: str | None = None,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
-
-    limit = min(max(limit, 1), 500)
-    statement = (
-        select(APIAccessLog)
-        .where(APIAccessLog.tool_id == tool_id, APIAccessLog.feature_name != None)
-    )
-    if username and username.strip():
-        statement = statement.where(
-            APIAccessLog.username.ilike(f"%{username.strip()}%")
-        )
-    if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        statement = statement.where(
-            or_(
-                APIAccessLog.path.ilike(pattern),
-                APIAccessLog.feature_name.ilike(pattern),
-                APIAccessLog.method.ilike(pattern),
-                APIAccessLog.behavior_label.ilike(pattern),
-            )
-        )
-    count_stmt = select(func.count(APIAccessLog.id)).where(
-        APIAccessLog.tool_id == tool_id,
-        APIAccessLog.feature_name != None,
-    )
-    if username and username.strip():
-        count_stmt = count_stmt.where(
-            APIAccessLog.username.ilike(f"%{username.strip()}%")
-        )
-    if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        count_stmt = count_stmt.where(
-            or_(
-                APIAccessLog.path.ilike(pattern),
-                APIAccessLog.feature_name.ilike(pattern),
-                APIAccessLog.method.ilike(pattern),
-                APIAccessLog.behavior_label.ilike(pattern),
-            )
-        )
-    raw_total = db.exec(count_stmt).first()
-    if raw_total is None:
-        total = 0
-    elif isinstance(raw_total, int):
-        total = raw_total
-    else:
-        total = int(raw_total[0])
-
-    logs = db.exec(
-        statement.order_by(APIAccessLog.created_at.desc()).offset(skip).limit(limit)
-    ).all()
-    return PaginatedAPIAccessLogs(
-        total=total,
-        items=[build_access_log_item(db, log) for log in logs],
-    )
-
-
-@router.get("/tools/{tool_id}/license-users", response_model=PaginatedToolLicenseUsers)
-async def list_tool_license_users(
-    tool_id: int,
-    skip: int = 0,
-    limit: int = 20,
-    search: str | None = None,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
-
-    perms = db.exec(
-        select(UserToolPermission).where(
-            UserToolPermission.tool_id == tool_id,
-            UserToolPermission.status == PermissionStatus.APPROVED,
-        )
-    ).all()
-
-    last_by_user: dict[int, datetime] = {}
-    agg_rows = db.exec(
-        select(APIAccessLog.user_id, func.max(APIAccessLog.created_at))
-        .where(
-            APIAccessLog.tool_id == tool_id,
-            APIAccessLog.feature_name != None,
-            APIAccessLog.user_id != None,
-        )
-        .group_by(APIAccessLog.user_id)
-    ).all()
-    for row in agg_rows:
-        cells = tuple(row)
-        if len(cells) < 2:
-            continue
-        uid, ts = cells[0], cells[1]
-        if uid is not None and ts is not None:
-            last_by_user[int(uid)] = ts
-
-    result: List[ToolLicenseUserRow] = []
-    for p in perms:
-        user = db.get(User, p.user_id)
-        if not user:
-            continue
-        granted_at = p.reviewed_at or p.applied_at
-        result.append(
-            ToolLicenseUserRow(
-                user=user,
-                granted_at=granted_at,
-                expires_at=p.expires_at,
-                last_used_at=last_by_user.get(p.user_id),
-            )
-        )
-
-    limit = min(max(limit, 1), 500)
-    result.sort(key=lambda r: r.user.username.lower())
-    if search and search.strip():
-        q = search.strip().lower()
-        result = [
-            r
-            for r in result
-            if q in r.user.username.lower()
-            or q in (r.user.email or "").lower()
-            or (r.user.full_name and q in r.user.full_name.lower())
-        ]
-    total = len(result)
-    return PaginatedToolLicenseUsers(
-        total=total,
-        items=result[skip: skip + limit],
-    )
-
-
-@router.delete("/tools/{tool_id}/license-users/{user_id}", response_model=SuccessResponse)
-async def revoke_tool_user_license(
-    tool_id: int,
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
-
-    perm = db.exec(
-        select(UserToolPermission).where(
-            UserToolPermission.tool_id == tool_id,
-            UserToolPermission.user_id == user_id,
-            UserToolPermission.status == PermissionStatus.APPROVED,
-        )
-    ).first()
-    if not perm:
-        raise HTTPException(
-            status_code=404,
-            detail="未找到该用户在该工具下的已批准权限",
-        )
-
-    db.delete(perm)
-    db.commit()
-
-    db.add(
-        Notification(
-            user_id=user_id,
-            title=f"工具「{tool.name}」使用权限已取消",
-            message=f"管理员或工具负责人已取消您对「{tool.name}」的使用权限。",
-            notification_type="permission",
-            related_id=tool_id,
-        )
-    )
-    db.commit()
-    return SuccessResponse(message="权限已撤销")
-
-
-@router.get("/tools/{tool_id}/feedback", response_model=PaginatedFeedbackWithUser)
-async def list_tool_feedback(
-    tool_id: int,
-    skip: int = 0,
-    limit: int = 20,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
-
-    limit = min(max(limit, 1), 500)
-    raw_total = db.exec(
-        select(func.count(Feedback.id)).where(
-            Feedback.tool_id == tool_id,
-            Feedback.category == FeedbackCategory.TOOL_USAGE.value,
-        )
-    ).first()
-    if raw_total is None:
-        total = 0
-    elif isinstance(raw_total, int):
-        total = raw_total
-    else:
-        total = int(raw_total[0])
-
-    rows = db.exec(
-        select(Feedback)
-        .where(
-            Feedback.tool_id == tool_id,
-            Feedback.category == FeedbackCategory.TOOL_USAGE.value,
-        )
-        .order_by(Feedback.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    ).all()
-    return PaginatedFeedbackWithUser(
-        total=total,
-        items=[build_feedback_with_user(db, f) for f in rows],
-    )
-
-
-@router.get("/feedback", response_model=PaginatedFeedbackWithUser)
-async def list_global_feedback(
-    category: Literal["system_feedback", "new_tool_suggestion"],
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    limit = min(max(limit, 1), 500)
-    raw_total = db.exec(
-        select(func.count(Feedback.id)).where(Feedback.category == category)
-    ).first()
-    if raw_total is None:
-        total = 0
-    elif isinstance(raw_total, int):
-        total = raw_total
-    else:
-        total = int(raw_total[0])
-
-    rows = db.exec(
-        select(Feedback)
-        .where(Feedback.category == category)
-        .order_by(Feedback.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    ).all()
-    return PaginatedFeedbackWithUser(
-        total=total,
-        items=[build_feedback_with_user(db, f) for f in rows],
-    )
-
-
-@router.get("/feedback/counts", response_model=FeedbackCountsResponse)
-async def feedback_counts(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    sf = db.exec(
-        select(Feedback).where(Feedback.category == FeedbackCategory.SYSTEM_FEEDBACK.value)
-    ).all()
-    ns = db.exec(
-        select(Feedback).where(Feedback.category == FeedbackCategory.NEW_TOOL_SUGGESTION.value)
-    ).all()
-    n_sf = len(sf)
-    n_ns = len(ns)
-    return FeedbackCountsResponse(
-        system_feedback=n_sf,
-        new_tool_suggestion=n_ns,
-        total=n_sf + n_ns,
-    )
-
-
-def _audit_log_filter_conditions(
-    user_id: int | None,
-    tool_id: int | None,
-    username: str | None,
-    q: str | None = None,
-):
-    conditions = []
-    if user_id is not None:
-        conditions.append(APIAccessLog.user_id == user_id)
-    if tool_id is not None:
-        conditions.append(APIAccessLog.tool_id == tool_id)
-    if username and username.strip():
-        pattern = f"%{username.strip()}%"
-        conditions.append(APIAccessLog.username.ilike(pattern))
-    if q and q.strip():
-        pattern = f"%{q.strip()}%"
-        conditions.append(
-            or_(
-                APIAccessLog.path.ilike(pattern),
-                APIAccessLog.feature_name.ilike(pattern),
-                APIAccessLog.method.ilike(pattern),
-                APIAccessLog.behavior_label.ilike(pattern),
-            )
-        )
-    return conditions
-
-
-@router.get("/audit-logs/export")
-async def export_audit_logs_csv(
-    user_id: int | None = None,
-    tool_id: int | None = None,
-    username: str | None = None,
-    q: str | None = None,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    max_rows = 10_000
-    statement = select(APIAccessLog)
-    for cond in _audit_log_filter_conditions(user_id, tool_id, username, q):
-        statement = statement.where(cond)
-    logs = db.exec(
-        statement.order_by(APIAccessLog.created_at.desc()).limit(max_rows)
-    ).all()
-
-    tool_ids = {log.tool_id for log in logs if log.tool_id}
-    tools_by_id: dict[int, Tool] = {}
-    if tool_ids:
-        for t in db.exec(select(Tool).where(Tool.id.in_(list(tool_ids)))).all():
-            tools_by_id[t.id] = t
-
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(
-        [
-            "id",
-            "created_at",
-            "username",
-            "user_id",
-            "method",
-            "path",
-            "feature_name",
-            "behavior_label",
-            "tool_id",
-            "status_code",
-            "latency_ms",
-            "client_ip",
-            "query_string",
-        ]
-    )
-    for log in logs:
-        bl = log.behavior_label
-        if not bl and log.tool_id and log.feature_name:
-            tool = tools_by_id.get(log.tool_id)
-            bl = resolve_behavior_label_from_tool(tool, log.feature_name)
-        writer.writerow(
-            [
-                log.id,
-                _format_ts_cst8(log.created_at),
-                log.username or "",
-                log.user_id if log.user_id is not None else "",
-                log.method,
-                log.path,
-                log.feature_name or "",
-                bl or "",
-                log.tool_id if log.tool_id is not None else "",
-                log.status_code,
-                log.latency_ms,
-                log.client_ip or "",
-                log.query_string or "",
-            ]
-        )
-    payload = "\ufeff" + buf.getvalue()
-    return StreamingResponse(
-        iter([payload.encode("utf-8")]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="audit-logs.csv"'},
-    )
-
-
-@router.get("/audit-logs", response_model=PaginatedAPIAccessLogs)
-async def get_all_audit_logs(
-    skip: int = 0,
-    limit: int = 20,
-    user_id: int | None = None,
-    tool_id: int | None = None,
-    username: str | None = None,
-    q: str | None = None,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    ensure_admin(current_user)
-    limit = min(max(limit, 1), 500)
-
-    count_stmt = select(func.count(APIAccessLog.id))
-    statement = select(APIAccessLog)
-    for cond in _audit_log_filter_conditions(user_id, tool_id, username, q):
-        count_stmt = count_stmt.where(cond)
-        statement = statement.where(cond)
-
-    raw_total = db.exec(count_stmt).first()
-    if raw_total is None:
-        total = 0
-    elif isinstance(raw_total, int):
-        total = raw_total
-    else:
-        total = int(raw_total[0])
-
-    logs = db.exec(
-        statement.order_by(APIAccessLog.created_at.desc()).offset(skip).limit(limit)
-    ).all()
-    items = [build_access_log_item(db, log) for log in logs]
-    return PaginatedAPIAccessLogs(total=total, items=items)
-
-@router.get("/permissions/pending", response_model=List[PermissionWithDetails])
-async def get_pending_permissions(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    if current_user.is_superuser:
-        statement = select(UserToolPermission).where(
-            UserToolPermission.status == PermissionStatus.PENDING
-        ).offset(skip).limit(limit)
-    else:
-        owner_assignments = db.exec(
-            select(ToolOwner.tool_id).where(ToolOwner.user_id == current_user.id)
-        ).all()
-        if not owner_assignments:
-            raise HTTPException(status_code=403, detail="仅工具负责人可审核权限")
-        statement = select(UserToolPermission).where(
-            UserToolPermission.status == PermissionStatus.PENDING,
-            UserToolPermission.tool_id.in_(owner_assignments),
-        ).offset(skip).limit(limit)
-
-    permissions = db.exec(statement).all()
-
-    # 加载关联数据
-    result = []
-    for perm in permissions:
-        user = db.get(User, perm.user_id)
-        tool = db.get(Tool, perm.tool_id)
-
-        if user and tool:
-            reviewer = db.get(User, perm.reviewed_by) if perm.reviewed_by else None
-            perm_with_details = PermissionWithDetails(
-                **perm.dict(),
-                user=user,
-                tool=tool,
-                reviewer=reviewer
-            )
-            result.append(perm_with_details)
-
-    return result
-
-@router.post("/permissions/{permission_id}/approve", response_model=SuccessResponse)
-async def approve_permission(
-    permission_id: int,
-    update_data: PermissionUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    permission = db.get(UserToolPermission, permission_id)
-    if not permission:
-        raise HTTPException(status_code=404, detail="权限申请不存在")
-
-    ensure_permission_reviewer(db, current_user, permission.tool_id)
-
-    if permission.status != PermissionStatus.PENDING:
-        raise HTTPException(
-            status_code=400,
-            detail="该权限申请不处于待审核状态"
-        )
-
-    # 更新权限状态
-    permission.status = PermissionStatus.APPROVED
-    permission.reviewed_by = current_user.id
-    permission.reviewed_at = datetime.utcnow()
-    if update_data.review_notes:
-        permission.review_notes = update_data.review_notes
-    if update_data.expires_at:
-        permission.expires_at = update_data.expires_at
-
-    db.add(permission)
-    db.commit()
-
-    tool = db.get(Tool, permission.tool_id)
-    tool_name = tool.name if tool else f"ID {permission.tool_id}"
-
-    # 创建通知（审核结果 + 后续使用引导）
-    notification = Notification(
-        user_id=permission.user_id,
-        title="权限申请已批准",
-        message=f"您对工具「{tool_name}」的权限申请已被批准。",
-        notification_type="permission",
-        related_id=permission_id
-    )
-    db.add(notification)
-    notification_tool = Notification(
-        user_id=permission.user_id,
-        title=f"工具「{tool_name}」已就绪",
-        message=f"请在「我的工具」或「所有工具」中打开该工具开始使用。",
-        notification_type="tool",
-        related_id=permission.tool_id,
-    )
-    db.add(notification_tool)
-    db.commit()
-
-    return SuccessResponse(message="权限申请已批准")
-
-@router.post("/permissions/{permission_id}/reject", response_model=SuccessResponse)
-async def reject_permission(
-    permission_id: int,
-    update_data: PermissionUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    if not update_data.review_notes:
-        raise HTTPException(
-            status_code=400,
-            detail="拒绝时必须填写审核说明"
-        )
-
-    permission = db.get(UserToolPermission, permission_id)
-    if not permission:
-        raise HTTPException(status_code=404, detail="权限申请不存在")
-
-    ensure_permission_reviewer(db, current_user, permission.tool_id)
-
-    if permission.status != PermissionStatus.PENDING:
-        raise HTTPException(
-            status_code=400,
-            detail="该权限申请不处于待审核状态"
-        )
-
-    # 更新权限状态
-    permission.status = PermissionStatus.REJECTED
-    permission.reviewed_by = current_user.id
-    permission.reviewed_at = datetime.utcnow()
-    permission.review_notes = update_data.review_notes
-
-    db.add(permission)
-    db.commit()
-
-    tool = db.get(Tool, permission.tool_id)
-    tool_name = tool.name if tool else f"ID {permission.tool_id}"
-
-    # 创建拒绝通知
-    notification = Notification(
-        user_id=permission.user_id,
-        title="权限申请被拒绝",
-        message=f"您对工具「{tool_name}」的权限申请已被拒绝。原因：{update_data.review_notes}",
-        notification_type="permission",
-        related_id=permission_id
-    )
-    db.add(notification)
-    db.commit()
-
-    return SuccessResponse(message="权限申请已拒绝")
-
-
-def _notification_message_for_release(tool_name: str, row: ToolRelease) -> str:
-    header = f"版本：{row.version}"
-    if row.spec_revision:
-        header += f"　规格修订：{row.spec_revision}"
-    body = f"{row.title}\n\n{row.changelog}"
-    if len(body) > 2500:
-        body = body[:2500] + "\n…（完整说明请在工具的「更新记录」中查看）"
-    return f"{header}\n\n{body}"
-
-
-@router.post("/tools/{tool_id}/releases", response_model=ToolReleaseInDB)
-async def publish_tool_release(
-    tool_id: int,
-    body: ToolReleasePublish,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_session),
-):
-    tool = db.get(Tool, tool_id)
-    if not tool:
-        raise HTTPException(status_code=404, detail="工具不存在")
-    ensure_permission_reviewer(db, current_user, tool_id)
-
-    now = datetime.utcnow()
-    sv = body.version.strip()
-    sr = body.spec_revision.strip() if body.spec_revision else None
-    row = ToolRelease(
-        tool_id=tool_id,
-        version=sv,
-        spec_revision=sr,
-        title=body.title.strip(),
-        changelog=body.changelog.strip(),
-        published_at=now,
-        published_by=current_user.id,
-    )
-    tool.version = sv
-    if sr:
-        tool.spec_revision = sr
-    db.add(row)
-    db.add(tool)
-    db.commit()
-    db.refresh(row)
-
-    if body.notify_users:
-        title = f"工具「{tool.name}」已发版 {row.version}"
-        msg = _notification_message_for_release(tool.name, row)
-        for uid in _recipient_user_ids_for_tool(db, tool_id):
-            db.add(
-                Notification(
-                    user_id=uid,
-                    title=title,
-                    message=msg,
-                    notification_type="tool_release",
-                    related_id=tool_id,
-                )
-            )
-        db.commit()
-
-    return ToolReleaseInDB.model_validate(row)

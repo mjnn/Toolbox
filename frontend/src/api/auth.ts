@@ -19,6 +19,26 @@ interface ApiError extends Error {
   data?: unknown
 }
 
+/** 将 FastAPI/Pydantic 英文校验提示转为中文，避免用户看到原始 msg。 */
+function translateRequestValidationMessage(msg: unknown): string {
+  const s = String(msg ?? '').trim()
+  if (!s) return ''
+  const rules: Array<[RegExp, (...groups: string[]) => string]> = [
+    [/^String should have at most (\d+) characters?$/i, (n) => `内容长度不能超过 ${n} 个字符`],
+    [/^Input should be less than or equal to (\d+)$/i, (n) => `内容长度不能超过 ${n} 个字符`],
+    [/^String should have at least (\d+) characters?$/i, (n) => `内容长度不能少于 ${n} 个字符`],
+    [/^Input should be greater than or equal to (\d+)$/i, (n) => `数值不能小于 ${n}`],
+    [/^Field required$/i, () => '缺少必填项'],
+    [/^value is not a valid integer$/i, () => '请输入有效的整数'],
+    [/^value is not a valid boolean$/i, () => '请输入是或否'],
+  ]
+  for (const [re, fmt] of rules) {
+    const m = s.match(re)
+    if (m) return fmt(...m.slice(1))
+  }
+  return s
+}
+
 const timeoutFromEnv = Number(import.meta.env.VITE_API_TIMEOUT_MS ?? 600000)
 const API_TIMEOUT_MS = Number.isFinite(timeoutFromEnv) && timeoutFromEnv >= 1000 ? timeoutFromEnv : 600000
 
@@ -159,7 +179,9 @@ api.interceptors.response.use(
     if (data?.detail) {
       if (Array.isArray(data.detail)) {
         // 422 验证错误格式: {detail: [{loc, msg, type}]}
-        unifiedError.message = data.detail.map((err: any) => err.msg).join(', ')
+        unifiedError.message = data.detail
+          .map((err: any) => translateRequestValidationMessage(err?.msg ?? err))
+          .join('；')
         unifiedError.detail = data.detail
       } else {
         // 400/401 业务错误格式: {detail: "错误消息"}

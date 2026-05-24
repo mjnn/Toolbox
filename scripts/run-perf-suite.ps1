@@ -1,10 +1,12 @@
 param(
   [Parameter(Mandatory = $false)]
-  [string]$BaseUrl = "http://127.0.0.1:3001",
+  [string]$BaseUrl = "http://127.0.0.1:3000",
   [Parameter(Mandatory = $true)]
   [string]$Token,
   [Parameter(Mandatory = $false)]
   [string]$ToolId = "",
+  [Parameter(Mandatory = $false)]
+  [string]$K6Path = "",
   [Parameter(Mandatory = $false)]
   [string]$OutputDir = ".\perf\results",
   [Parameter(Mandatory = $false)]
@@ -61,6 +63,9 @@ $baselineCmd = @(
   "-Profile", $baselineProfile,
   "-OutJson", $baselineJson
 ) + $baselineExtra
+if ($K6Path -ne "") {
+  $baselineCmd += @("-K6Path", $K6Path)
+}
 if ($ToolId -ne "") {
   $baselineCmd += @("-ToolId", $ToolId)
 }
@@ -75,6 +80,9 @@ $stressCmd = @(
   "-Profile", $stressProfile,
   "-OutJson", $stressJson
 ) + $stressExtra
+if ($K6Path -ne "") {
+  $stressCmd += @("-K6Path", $K6Path)
+}
 if ($ToolId -ne "") {
   $stressCmd += @("-ToolId", $ToolId)
 }

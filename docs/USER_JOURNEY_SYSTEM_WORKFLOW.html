@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>用户旅程到系统工作流（极简版）</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --line: #60a5fa;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --host: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      padding: 20px;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      background: linear-gradient(180deg, #0b1222, #0f172a);
+      overflow: hidden;
+    }
+    .head {
+      padding: 14px 18px;
+      border-bottom: 1px solid #1f2937;
+    }
+    .head h1 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .head p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .canvas { padding: 18px; overflow: auto; }
+    svg { width: 1040px; height: 540px; }
+
+    .node {
+      fill: var(--card);
+      stroke: #334155;
+      stroke-width: 1.2;
+      rx: 10;
+      ry: 10;
+    }
+    .node-host { stroke: var(--host); }
+    .node-ok { stroke: var(--ok); }
+    .node-warn { stroke: var(--warn); }
+    .t1 { font-size: 15px; font-weight: 700; fill: #fff; }
+    .t2 { font-size: 12px; fill: var(--muted); }
+    .arrow {
+      stroke: var(--line);
+      stroke-width: 1.6;
+      fill: none;
+      marker-end: url(#arr);
+    }
+    .label { font-size: 11px; fill: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>用户旅程 -> 系统工作流（简版）</h1>
+      <p>从“看到工具”到“调用成功并可追踪”的最短主链路。</p>
+    </div>
+    <div class="canvas">
+      <svg viewBox="0 0 1040 540" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#60a5fa"></path>
+          </marker>
+        </defs>
+
+        <!-- Row 1 -->
+        <rect class="node" x="40" y="40" width="170" height="90" />
+        <text class="t1" x="58" y="72">1 用户进入系统</text>
+        <text class="t2" x="58" y="94">登录 + 读取当前身份</text>
+
+        <rect class="node node-host" x="250" y="40" width="190" height="90" />
+        <text class="t1" x="268" y="72">2 工具列表可见性</text>
+        <text class="t2" x="268" y="94">内外网策略筛选工具</text>
+
+        <rect class="node" x="480" y="40" width="180" height="90" />
+        <text class="t1" x="498" y="72">3 用户选中工具</text>
+        <text class="t2" x="498" y="94">进入 ToolDetail</text>
+
+        <rect class="node node-warn" x="700" y="40" width="300" height="90" />
+        <text class="t1" x="718" y="72">4 若无权限：发起申请</text>
+        <text class="t2" x="718" y="94">POST /permissions/apply/{tool_id}</text>
+
+        <!-- Row 2 -->
+        <rect class="node node-host" x="120" y="200" width="260" height="100" />
+        <text class="t1" x="138" y="236">5 审批流（负责人/超管）</text>
+        <text class="t2" x="138" y="258">批准/拒绝 -> 写入权限状态</text>
+        <text class="t2" x="138" y="278">通过后用户可调用工具功能</text>
+
+        <rect class="node node-ok" x="430" y="200" width="280" height="100" />
+        <text class="t1" x="448" y="236">6 统一工具入口</text>
+        <text class="t2" x="448" y="258">/api/v1/tools/{id}/features/{feature}</text>
+        <text class="t2" x="448" y="278">中间件做鉴权 + is_active/runtime_status</text>
+
+        <rect class="node node-host" x="760" y="200" width="240" height="100" />
+        <text class="t1" x="778" y="236">7 路由到工具能力</text>
+        <text class="t2" x="778" y="258">优先转发 TOOLBOX_TOOL_UPSTREAMS</text>
+        <text class="t2" x="778" y="278">或按配置本地插件加载</text>
+
+        <!-- Row 3 -->
+        <rect class="node node-ok" x="200" y="380" width="280" height="100" />
+        <text class="t1" x="218" y="416">8 返回业务结果</text>
+        <text class="t2" x="218" y="438">成功/失败都回到前端统一处理</text>
+        <text class="t2" x="218" y="458">用户完成一次工具操作</text>
+
+        <rect class="node node-host" x="540" y="380" width="360" height="100" />
+        <text class="t1" x="558" y="416">9 全链路可追踪</text>
+        <text class="t2" x="558" y="438">APIAccessLog 记录 tool_id + feature + user + 时间</text>
+        <text class="t2" x="558" y="458">管理端可查使用记录 / 审计 / 版本治理</text>
+
+        <!-- arrows -->
+        <path class="arrow" d="M210 85 L250 85" />
+        <path class="arrow" d="M440 85 L480 85" />
+        <path class="arrow" d="M660 85 L700 85" />
+
+        <path class="arrow" d="M850 130 L850 185" />
+        <path class="arrow" d="M850 185 L380 185 L380 200" />
+
+        <path class="arrow" d="M380 250 L430 250" />
+        <path class="arrow" d="M710 250 L760 250" />
+
+        <path class="arrow" d="M880 300 L880 360 L480 360 L480 430" />
+        <path class="arrow" d="M480 430 L540 430" />
+
+        <!-- small labels -->
+        <text class="label" x="792" y="176">审批通过后进入主链路</text>
+        <text class="label" x="772" y="352">工具处理完成后回流</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

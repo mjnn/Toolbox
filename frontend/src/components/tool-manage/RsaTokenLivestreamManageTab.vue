@@ -137,7 +137,7 @@ onMounted(async () => {
 }
 
 .section-hint {
-  color: #909399;
+  color: #606266;
   font-size: 13px;
   margin: 0 0 12px;
 }
@@ -149,7 +149,7 @@ onMounted(async () => {
 }
 
 .updated-time {
-  color: #909399;
+  color: #606266;
   font-size: 12px;
 }
 </style>

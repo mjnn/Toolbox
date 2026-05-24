@@ -7,8 +7,10 @@
       title="普通用户可新增、修改、删除自己提交的服务 ID。工具负责人可在管理页查看并治理全量数据。"
     />
 
-    <el-card shadow="never">
-      <template #header>{{ editingId ? '编辑服务 ID' : '新增服务 ID' }}</template>
+    <el-tabs v-model="panelTab" class="service-id-main-tabs">
+      <el-tab-pane label="新增与编辑" name="form">
+        <el-card shadow="never">
+          <template #header>{{ editingId ? '编辑服务 ID' : '新增服务 ID' }}</template>
       <el-form label-position="top">
         <el-row :gutter="12">
           <el-col :span="12">
@@ -276,26 +278,30 @@
           <el-button v-if="editingId" @click="resetForm">取消编辑</el-button>
         </div>
       </el-form>
-    </el-card>
+        </el-card>
+      </el-tab-pane>
 
-    <el-card shadow="never">
-      <template #header>我提交的服务 ID</template>
-      <el-table :data="entries" v-loading="loading" stripe>
-        <el-table-column prop="service_id" label="Service ID" min-width="180" />
-        <el-table-column prop="business_function" label="业务功能" width="140" />
-        <el-table-column prop="service_type" label="服务类型（ServiceType）" width="160" />
-        <el-table-column prop="psga_availability" label="PSGA" min-width="160" />
-        <el-table-column prop="updated_by_name" label="最后更改人" width="120" />
-        <el-table-column label="最后更新时间" width="180">
-          <template #default="scope">{{ formatDate(scope.row.updated_at) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="scope">
-            <el-button type="primary" size="small" link @click="startEdit(scope.row)">编辑</el-button>
-            <el-button type="danger" size="small" link @click="remove(scope.row.id)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <el-tab-pane label="我提交的服务 ID" name="list">
+        <el-card shadow="never">
+          <template #header>我提交的服务 ID</template>
+      <div class="table-scroll">
+        <el-table :data="entries" v-loading="loading" stripe>
+          <el-table-column prop="service_id" label="Service ID" min-width="180" />
+          <el-table-column prop="business_function" label="业务功能" width="140" />
+          <el-table-column prop="service_type" label="服务类型（ServiceType）" width="160" />
+          <el-table-column prop="psga_availability" label="PSGA" min-width="160" />
+          <el-table-column prop="updated_by_name" label="最后更改人" width="120" />
+          <el-table-column label="最后更新时间" width="180">
+            <template #default="scope">{{ formatDate(scope.row.updated_at) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="140" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" size="small" link @click="startEdit(scope.row)">编辑</el-button>
+              <el-button type="danger" size="small" link @click="remove(scope.row.id)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
       <div class="table-pagination">
         <el-pagination
           v-model:current-page="entriesPage"
@@ -307,7 +313,9 @@
           @size-change="onEntriesPageSizeChange"
         />
       </div>
-    </el-card>
+        </el-card>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
@@ -333,6 +341,7 @@ const props = defineProps<{ toolId: number }>()
 const route = useRoute()
 const router = useRouter()
 
+const panelTab = ref<'form' | 'list'>('form')
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
@@ -533,6 +542,7 @@ const onEntriesPageSizeChange = (size: number) => {
 }
 
 const startEdit = (item: ServiceIdEntry) => {
+  panelTab.value = 'form'
   editingId.value = item.id
   Object.assign(form, {
     business_function: item.business_function,
@@ -615,6 +625,10 @@ onMounted(async () => {
   gap: 16px;
 }
 
+.service-id-main-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
+}
+
 .action-row {
   display: flex;
   gap: 8px;
@@ -664,5 +678,36 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+  .table-pagination {
+    justify-content: flex-start;
+  }
+
+  .json-mode-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-date-editor),
+  :deep(.el-input-number),
+  :deep(.el-textarea) {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  :deep(.el-col) {
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
 }
 </style>

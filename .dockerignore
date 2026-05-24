@@ -11,7 +11,7 @@ backend/.venv
 backend/__pycache__
 backend/dist_packaging
 backend/app.db
-backend/.env
+# backend/.env — 构建机若存在则打进镜像/便于内网镜像；勿将含密钥的镜像推公共仓库
 
 frontend/node_modules
 

@@ -1,4 +1,8 @@
 @echo off
 setlocal
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop.ps1"
+if exist "%~dp0stop-split.ps1" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-split.ps1"
+) else (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop.ps1"
+)
 pause

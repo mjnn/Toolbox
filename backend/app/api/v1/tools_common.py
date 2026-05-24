@@ -4,7 +4,14 @@ from datetime import datetime
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models import Tool, ToolOwner, User, UserToolPermission, PermissionStatus
+from app.models import (
+    Tool,
+    ToolOwner,
+    ToolRuntimeStatus,
+    User,
+    UserToolPermission,
+    PermissionStatus,
+)
 from app.core.tool_visibility import is_tool_visible
 
 SERVICE_ID_REGISTRY_TOOL_NAME = "service-id-registry"
@@ -20,13 +27,23 @@ def get_tool_or_404(db: Session, tool_id: int) -> Tool:
 
 
 def ensure_tool_available_and_accessible(db: Session, user: User, tool: Tool) -> None:
-    ensure_tool_active_or_superuser(user, tool)
+    ensure_tool_operational_for_user(user, tool)
     ensure_tool_access(db, user, tool.id)
 
 
-def ensure_tool_active_or_superuser(user: User, tool: Tool) -> None:
+def ensure_tool_operational_for_user(user: User, tool: Tool) -> None:
+    """业务入口：更新中 / 停用时仅超级管理员可继续调用（容灾/排障）。"""
+    st = tool.runtime_status
+    if st == ToolRuntimeStatus.UPDATING and not user.is_superuser:
+        raise HTTPException(
+            status_code=503, detail="工具更新中，请稍后再试",
+        )
     if not tool.is_active and not user.is_superuser:
         raise HTTPException(status_code=403, detail="工具暂不可用")
+
+
+def ensure_tool_active_or_superuser(user: User, tool: Tool) -> None:
+    ensure_tool_operational_for_user(user, tool)
 
 
 def ensure_tool_access(db: Session, user: User, tool_id: int) -> None:

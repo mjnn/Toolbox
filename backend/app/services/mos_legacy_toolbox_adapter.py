@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""MOS 工具遗留逻辑适配层（仅 mos-integration-toolbox 使用）。
+
+该模块会动态把 `ref/toolboxweb` 加入 `sys.path` 并导入历史脚本。
+除 `mos-integration-toolbox` 外，其他工具禁止依赖此模块。
+"""
+
 import json
 import logging
 import os
@@ -17,7 +23,7 @@ from typing import Any, Callable, TypeVar
 import requests
 from cryptography.fernet import Fernet, InvalidToken
 
-from app.core.config_simple import SECRET_KEY
+from app.services.secret_key import get_secret_key
 
 
 REQUEST_RETRIES = 3
@@ -56,7 +62,7 @@ VEHICLE_RULE_OVERRIDE_FILE = LEGACY_TOOLBOX_DIR / "static" / "config" / "vehicle
 if str(LEGACY_TOOLBOX_DIR) not in sys.path:
     sys.path.insert(0, str(LEGACY_TOOLBOX_DIR))
 
-logger = logging.getLogger("app.services.legacy_toolbox")
+logger = logging.getLogger("app.services.mos_legacy_toolbox_adapter")
 T = TypeVar("T")
 
 
@@ -223,7 +229,7 @@ def _load_account_password_json() -> dict[str, Any]:
 
 
 def _build_fernet() -> Fernet:
-    key_material = hashlib.sha256(SECRET_KEY.encode("utf-8")).digest()
+    key_material = hashlib.sha256(get_secret_key().encode("utf-8")).digest()
     fernet_key = base64.urlsafe_b64encode(key_material)
     return Fernet(fernet_key)
 

@@ -1,11 +1,8 @@
 """mos-integration-toolbox tool feature routes."""
 import json
-import os
 import re
-import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -39,7 +36,6 @@ from app.schemas import (
     MosDbOptimizationUpdateRequest,
     MosTokenPreloadRequest,
 )
-from app.core.config_simple import BACKEND_ROOT, DATABASE_URL
 from app.api.v1.users import get_current_active_user
 from app.api.v1.tools_common import (
     ensure_tool_access,
@@ -50,7 +46,7 @@ from app.api.v1.tools_common import (
     ensure_manage_permission,
     can_manage_all_records,
 )
-from app.services.legacy_toolbox_adapter import (
+from app.services.mos_legacy_toolbox_adapter import (
     handle_x509_feature,
     query_unicom_sim,
     query_ctcc_sim,
@@ -70,12 +66,14 @@ from app.services.legacy_toolbox_adapter import (
     update_runtime_credentials,
     preload_mos_tokens,
 )
+from app.services import db_optimization_runtime
 
 router = APIRouter()
+# routes.py -> plugins -> tools -> app -> backend
+_BACKEND_ROOT = Path(__file__).resolve().parents[3]
 _FEATURE_SLUG_REGEX = re.compile(r"^[a-zA-Z0-9_/-]+$")
 _HEX_COLOR_REGEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 _ANNOUNCEMENT_PRIORITIES = {"urgent", "notice", "reminder"}
-_DB_OPTIMIZATION_FILE = Path(BACKEND_ROOT) / "runtime" / "db_optimization.json"
 
 
 def _record_mos_manage_change(
@@ -103,62 +101,6 @@ def _record_mos_manage_change(
 def _ensure_super_admin(current_user: User) -> None:
     if not current_user.is_superuser:
         raise HTTPException(status_code=403, detail="仅超级管理员可配置数据库优化参数")
-
-
-def _mask_database_url(raw: str) -> str:
-    text = (raw or "").strip()
-    if not text:
-        return ""
-    parsed = urlparse(text)
-    if parsed.password:
-        return text.replace(f":{parsed.password}@", ":***@")
-    return text
-
-
-def _is_remote_database_url(raw: str) -> bool:
-    parsed = urlparse((raw or "").strip())
-    host = (parsed.hostname or "").lower()
-    return bool(host and host not in {"localhost", "127.0.0.1", "::1"})
-
-
-def _load_db_optimization_overrides() -> dict[str, int]:
-    if not _DB_OPTIMIZATION_FILE.exists():
-        return {}
-    try:
-        raw = json.loads(_DB_OPTIMIZATION_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    if not isinstance(raw, dict):
-        return {}
-    result: dict[str, int] = {}
-    for key in ("pool_size", "max_overflow", "pool_timeout_seconds", "pool_recycle_seconds", "workers", "statement_timeout_ms"):
-        value = raw.get(key)
-        if isinstance(value, int):
-            result[key] = value
-    return result
-
-
-def _save_db_optimization_overrides(data: dict[str, int]) -> None:
-    _DB_OPTIMIZATION_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _DB_OPTIMIZATION_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def _upsert_env_lines(env_path: Path, updates: dict[str, int]) -> None:
-    rows: list[str] = []
-    if env_path.exists():
-        rows = env_path.read_text(encoding="utf-8").splitlines()
-    for key, value in updates.items():
-        line = f"{key}={value}"
-        found = False
-        for idx, existing in enumerate(rows):
-            if existing.strip().startswith(f"{key}="):
-                rows[idx] = line
-                found = True
-                break
-        if not found:
-            rows.append(line)
-    payload = "\n".join(rows).strip()
-    env_path.write_text(payload + "\n", encoding="utf-8")
 
 
 def _is_announcement_active(row: ToolAnnouncement, now: datetime) -> bool:
@@ -227,6 +169,10 @@ def _normalize_priority(raw: str | None) -> str:
     if level not in _ANNOUNCEMENT_PRIORITIES:
         raise HTTPException(status_code=400, detail="公告优先级仅支持 urgent / notice / reminder")
     return level
+
+
+def _strip_csr_whitespace(value: str) -> str:
+    return re.sub(r"\s+", "", value)
 
 
 def _is_feature_blocked_by_announcement(
@@ -337,12 +283,17 @@ async def x509_cert_feature(
             raise HTTPException(status_code=400, detail="parse_csr 动作需要 csr")
         if body.action == "parse_cert" and not body.cert:
             raise HTTPException(status_code=400, detail="parse_cert 动作需要 cert")
+        csrs = body.csrs
+        if body.action == "sign":
+            csrs = [_strip_csr_whitespace(csr) for csr in body.csrs if csr and csr.strip()]
+            if not csrs:
+                raise HTTPException(status_code=400, detail="sign 动作需要有效的 csr 内容")
 
         result = handle_x509_feature(
             action=body.action,
             env=body.env,
             iam_sns=body.iam_sns,
-            csrs=body.csrs,
+            csrs=csrs,
             csr=body.csr,
             cert=body.cert,
         )
@@ -972,36 +923,10 @@ async def get_mos_db_optimization_feature(
     ensure_mos_integration_toolbox_tool(tool)
     ensure_manage_permission(db, current_user, tool_id)
     _ensure_super_admin(current_user)
-    overrides = _load_db_optimization_overrides()
-    env_current = {
-        "SQLALCHEMY_POOL_SIZE": int(os.getenv("SQLALCHEMY_POOL_SIZE", "4")),
-        "SQLALCHEMY_MAX_OVERFLOW": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2")),
-        "SQLALCHEMY_POOL_TIMEOUT": int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30")),
-        "SQLALCHEMY_POOL_RECYCLE": int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800")),
-        "TOOLBOX_WORKERS": int(os.getenv("TOOLBOX_WORKERS", "2")),
-        "SQLALCHEMY_STATEMENT_TIMEOUT_MS": int(os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000")),
-    }
-    recommendation = {
-        "pool_size": max(4, env_current["SQLALCHEMY_POOL_SIZE"]),
-        "max_overflow": max(2, env_current["SQLALCHEMY_MAX_OVERFLOW"]),
-        "pool_timeout_seconds": max(30, env_current["SQLALCHEMY_POOL_TIMEOUT"]),
-        "pool_recycle_seconds": max(1800, env_current["SQLALCHEMY_POOL_RECYCLE"]),
-        "workers": max(2, env_current["TOOLBOX_WORKERS"]),
-        "statement_timeout_ms": max(15000, env_current["SQLALCHEMY_STATEMENT_TIMEOUT_MS"]),
-    }
-    return ToolFeatureResponse(
-        success=True,
-        message="加载成功",
-        data={
-            "database_url_masked": _mask_database_url(DATABASE_URL),
-            "is_remote_database": _is_remote_database_url(DATABASE_URL),
-            "current_env": env_current,
-            "saved_overrides": overrides,
-            "recommendation": recommendation,
-            "requires_restart": True,
-            "note": "保存后将写入 backend/.env，需重启后端进程生效。",
-        },
+    payload = db_optimization_runtime.build_db_optimization_read_payload(
+        note="保存后将写入 backend/.env，需重启后端进程生效。",
     )
+    return ToolFeatureResponse(success=True, message="加载成功", data=payload)
 
 
 @router.put("/{tool_id}/features/mos-manage/db-optimization", response_model=ToolFeatureResponse)
@@ -1015,44 +940,24 @@ async def update_mos_db_optimization_feature(
     ensure_mos_integration_toolbox_tool(tool)
     ensure_manage_permission(db, current_user, tool_id)
     _ensure_super_admin(current_user)
-    updates: dict[str, int] = {}
+    touched: list[str] = []
     if body.pool_size is not None:
-        updates["pool_size"] = body.pool_size
+        touched.append("pool_size")
     if body.max_overflow is not None:
-        updates["max_overflow"] = body.max_overflow
+        touched.append("max_overflow")
     if body.pool_timeout_seconds is not None:
-        updates["pool_timeout_seconds"] = body.pool_timeout_seconds
+        touched.append("pool_timeout_seconds")
     if body.pool_recycle_seconds is not None:
-        updates["pool_recycle_seconds"] = body.pool_recycle_seconds
+        touched.append("pool_recycle_seconds")
     if body.workers is not None:
-        updates["workers"] = body.workers
+        touched.append("workers")
     if body.statement_timeout_ms is not None:
-        updates["statement_timeout_ms"] = body.statement_timeout_ms
-    if not updates:
-        raise HTTPException(status_code=400, detail="至少提交一项数据库优化参数")
+        touched.append("statement_timeout_ms")
 
-    saved = _load_db_optimization_overrides()
-    saved.update(updates)
-    _save_db_optimization_overrides(saved)
-
-    if body.apply_to_env:
-        effective = {
-            "pool_size": int(saved.get("pool_size", os.getenv("SQLALCHEMY_POOL_SIZE", "4"))),
-            "max_overflow": int(saved.get("max_overflow", os.getenv("SQLALCHEMY_MAX_OVERFLOW", "2"))),
-            "pool_timeout_seconds": int(saved.get("pool_timeout_seconds", os.getenv("SQLALCHEMY_POOL_TIMEOUT", "30"))),
-            "pool_recycle_seconds": int(saved.get("pool_recycle_seconds", os.getenv("SQLALCHEMY_POOL_RECYCLE", "1800"))),
-            "workers": int(saved.get("workers", os.getenv("TOOLBOX_WORKERS", "2"))),
-            "statement_timeout_ms": int(saved.get("statement_timeout_ms", os.getenv("SQLALCHEMY_STATEMENT_TIMEOUT_MS", "15000"))),
-        }
-        env_updates = {
-            "SQLALCHEMY_POOL_SIZE": effective["pool_size"],
-            "SQLALCHEMY_MAX_OVERFLOW": effective["max_overflow"],
-            "SQLALCHEMY_POOL_TIMEOUT": effective["pool_timeout_seconds"],
-            "SQLALCHEMY_POOL_RECYCLE": effective["pool_recycle_seconds"],
-            "TOOLBOX_WORKERS": effective["workers"],
-            "SQLALCHEMY_STATEMENT_TIMEOUT_MS": effective["statement_timeout_ms"],
-        }
-        _upsert_env_lines(Path(BACKEND_ROOT) / ".env", env_updates)
+    result = db_optimization_runtime.apply_db_optimization_update(
+        body,
+        env_file=_BACKEND_ROOT / ".env",
+    )
 
     _record_mos_manage_change(
         db,
@@ -1060,16 +965,12 @@ async def update_mos_db_optimization_feature(
         current_user=current_user,
         action="update",
         target="db_optimization",
-        summary=f"更新数据库优化参数: {', '.join(sorted(updates.keys()))}",
+        summary=f"更新数据库优化参数: {', '.join(sorted(touched)) if touched else 'none'}",
     )
     return ToolFeatureResponse(
         success=True,
         message="数据库优化参数已保存",
-        data={
-            "saved_overrides": saved,
-            "applied_to_env": body.apply_to_env,
-            "requires_restart": True,
-        },
+        data=result,
     )
 
 
@@ -1083,9 +984,7 @@ async def ping_mos_db_optimization_feature(
     ensure_mos_integration_toolbox_tool(tool)
     ensure_manage_permission(db, current_user, tool_id)
     _ensure_super_admin(current_user)
-    started = time.perf_counter()
-    db.exec(select(1)).first()
-    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    elapsed_ms = db_optimization_runtime.ping_database_ms(db)
     return ToolFeatureResponse(
         success=True,
         message="数据库连通性检测成功",

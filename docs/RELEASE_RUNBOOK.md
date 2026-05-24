@@ -37,6 +37,56 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 
 ---
 
+## 0.2 发布范围判定（宿主 / 工具 / 混合）
+
+发布前先判定本次改动的耦合范围，并按最小影响面发版。禁止把“只改某个工具”按“全量宿主+全部工具”一起发布。
+
+| 类型 | 典型改动 | 推荐发布范围 | 版本记录要求 |
+|------|----------|--------------|--------------|
+| 宿主（Host） | 认证、权限、管理聚合、审计、通用 API、前端壳 | 仅宿主镜像/宿主便携入口 | 记录宿主版本与宿主 changelog |
+| 工具（Tool） | 单个插件业务逻辑、工具专属接口、工具前端面板 | 仅目标工具（及必要路由映射） | 记录该工具版本与该工具 changelog |
+| 混合（Host + Tool） | 既改宿主又改至少一个工具，且存在联动契约 | 仅发布受影响宿主 + 受影响工具集合 | 宿主与每个工具分别记录版本与 changelog |
+
+### 0.2.1 最小范围发布规则（ECS + 便携统一）
+
+1. **先列清单再构建**：在发布单中明确 `Host` 与 `Tools[]`。  
+2. **按耦合颗粒度出包/出镜像**：只构建并替换必要组件，不做无关组件重发。  
+3. **混合发布时拆分说明**：同一版本窗口允许同时发布宿主+工具，但变更记录必须分栏，不得混写。  
+4. **若无法拆分**（历史原因或紧急）：必须在发布记录中注明“扩大范围原因”和“回滚边界”。
+
+### 0.2.2 发布记录模板（必须填写）
+
+发布记录最少包含以下字段，可写入 Release Note、运维单或 PR 描述：
+
+可先用脚本生成记录骨架，再补齐内容：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts/release-note-init.ps1" -Type mixed -Channel ecs -ReleaseId "v2026.04.24-baseline1.0" -Tools "service-id-registry"
+```
+
+```text
+发布类型: host | tool | mixed
+发布范围:
+- host: <yes/no>
+- tools: [tool_key_1, tool_key_2]
+版本:
+- host_version: <x.y.z or vYYYY.MM.DD-channel>
+- tool_versions:
+  - <tool_key>: <version>
+变更记录:
+- host_changelog: <仅宿主变更；无则填 N/A>
+- tool_changelog:
+  - <tool_key>: <仅该工具变更；无则填 N/A>
+回滚边界:
+- host_rollback_to: <version/tag>
+- tool_rollback_to:
+  - <tool_key>: <version/tag>
+```
+
+> 建议：工具 changelog 使用“新增/修复/兼容性影响”三段式，确保管理员在“版本管理 -> 同步版本”后可直接理解影响面。
+
+---
+
 ## 1. 发布前闸门（硬约束）
 
 在**目标发布 commit** 上，于**仓库根目录**执行：
@@ -44,7 +94,7 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 | 步骤 | 命令 | 通过标准 |
 |------|------|----------|
 | 工具契约与边界 | `powershell -NoProfile -File scripts/run-ci-tool-checks.ps1` | 退出码 0；与 CI 中 Python 两步等价（见 `.github/workflows/ci.yml`） |
-| 前端生产构建 | 在 `frontend` 目录：`pnpm install`（如需）后 `pnpm run build` | 无错误；产物在 `frontend/dist` |
+| 前端生产构建 | 在 `frontend` 目录：`pnpm install --frozen-lockfile`（与 CI 一致）后 `pnpm run build` | 无错误；产物在 `frontend/dist` |
 | （建议）后端语法 | `python -m compileall backend/app backend/main.py` | 无语法错误 |
 
 **说明**：仓库**无**独立自动化测试套件（见 `TOOL_INTEGRATION_STANDARD.md` §1）；闸门通过后仍需 **§4 手工冒烟**。新工具或改插件时另遵守 `docs/TOOL_INTEGRATION_STANDARD.md` §10 与 `.cursor/rules/tool-plugins.mdc`。
@@ -81,7 +131,7 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 
 1. 检出发布 commit，配置 `backend/.env`。  
 2. 安装后端依赖：`backend/requirements.txt`（建议在 venv 中）。  
-3. 构建前端：`frontend` 下 `pnpm run build`。  
+3. 构建前端：`frontend` 下 `pnpm install --frozen-lockfile`（与 CI 一致）后 `pnpm run build`。  
 4. 运行方式二选一：  
    - **开发同名策略**：后端 Uvicorn 指向含 `index.html` 的 `frontend/dist`（见 `main.py` 中 `TOOLBOX_FRONTEND_DIST` / 默认相对路径）。  
    - **反代**：Nginx/Caddy 将 `/` 指向前端静态目录，`/api` 指到 Uvicorn；此时须把 `BACKEND_CORS_ORIGINS` 配成前端页面的 Origin（若不同源）。  
@@ -93,6 +143,11 @@ stack: Vue3 + FastAPI + PostgreSQL（仅 DATABASE_URL）
 
 - **细则**以 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`** 为准（`scripts/build-release.ps1` → `release/toolbox-portable`）。  
 - 运行依赖仍含 **PostgreSQL**（连接串在 `.env`）；包内为后端可执行文件 + 嵌入 `dist`，**不是**「无数据库单机 demo」。
+
+### 3.3 形态 B 补充：与 ECS 解耦
+
+- **内网 Windows 便携包**细则见 **`scripts/PORTABLE_README.md`** 与 **`docs/PORTABLE_PACKAGING_AGENT_RUNBOOK.md`**（默认单进程 `toolbox-backend.exe` + 启停脚本；可选 k6 验收脚本，k6 使用 PATH 或自建 `ops\k6.exe`）。
+- **ECS / Docker 外网单工具发布**（`docs/EXTERNAL_PUBLIC_RELEASE.md`）不包含 Windows 便携产物；镜像与 compose **保持原状**。
 
 ---
 

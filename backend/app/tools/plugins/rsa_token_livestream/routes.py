@@ -15,6 +15,7 @@ from app.api.v1.tools_common import (
     ensure_manage_permission,
     ensure_rsa_token_livestream_tool,
     ensure_tool_access,
+    ensure_tool_operational_for_user,
     get_tool_or_404,
 )
 
@@ -31,8 +32,7 @@ _DEFAULT_PLACEHOLDER_MESSAGE = "当前 RSA Token 直播暂未开放，请联系�
 
 
 def _ensure_tool_feature_access(db: Session, current_user: User, tool: Tool) -> None:
-    if not tool.is_active and not current_user.is_superuser:
-        raise HTTPException(status_code=403, detail="工具暂不可用")
+    ensure_tool_operational_for_user(current_user, tool)
     ensure_tool_access(db, current_user, tool.id)
 
 

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOS 宿主-工具边界架构图</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131a2b;
+      --panel-2: #1a2340;
+      --text: #e7ecff;
+      --muted: #a8b3d9;
+      --line: #4f5d90;
+      --host: #2f6feb;
+      --middleware: #7c4dff;
+      --tool: #00a38a;
+      --data: #cc7a00;
+      --warn: #ff5f7a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #090e1c, #0b1020);
+      color: var(--text);
+      padding: 20px;
+    }
+
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+      background: rgba(19, 26, 43, 0.9);
+      border: 1px solid #243056;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #243056;
+      background: linear-gradient(90deg, #131a2b, #1a2340);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 12px 20px;
+      border-bottom: 1px dashed #2b3966;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    .canvas {
+      padding: 20px;
+      overflow: auto;
+    }
+    svg { width: 1240px; height: 860px; }
+
+    .box {
+      fill: var(--panel);
+      stroke: var(--line);
+      stroke-width: 1.4;
+      rx: 10;
+      ry: 10;
+    }
+    .box-host { stroke: var(--host); }
+    .box-mid { stroke: var(--middleware); }
+    .box-tool { stroke: var(--tool); }
+    .box-data { stroke: var(--data); }
+    .box-warn { stroke: var(--warn); stroke-dasharray: 6 5; }
+
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      fill: #ffffff;
+    }
+    .sub {
+      font-size: 12px;
+      fill: var(--muted);
+    }
+    .txt {
+      font-size: 12px;
+      fill: #d7e1ff;
+    }
+    .small {
+      font-size: 11px;
+      fill: #c2cefa;
+    }
+    .edge {
+      stroke: #8aa0ff;
+      stroke-width: 1.5;
+      fill: none;
+      marker-end: url(#arrow);
+    }
+    .edge-dash {
+      stroke-dasharray: 6 4;
+    }
+    .edge-label {
+      font-size: 11px;
+      fill: #c6d3ff;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>MOS 宿主 / 工具 / 中间件边界架构图</h1>
+      <p>基于当前实现：`/api/v1/tools/{tool_id}/features/{feature}` 统一入口、宿主默认转发上游、插件按白名单可选加载。</p>
+    </div>
+    <div class="legend">
+      <span><i class="dot" style="background: var(--host)"></i>宿主边界</span>
+      <span><i class="dot" style="background: var(--middleware)"></i>全局中间件/门禁</span>
+      <span><i class="dot" style="background: var(--tool)"></i>工具域（插件/上游）</span>
+      <span><i class="dot" style="background: var(--data)"></i>数据与运行配置</span>
+      <span><i class="dot" style="background: var(--warn)"></i>硬约束（禁止跨边界）</span>
+    </div>
+
+    <div class="canvas">
+      <svg viewBox="0 0 1240 860" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+            <path d="M0,0 L8,3 L0,6 Z" fill="#8aa0ff"></path>
+          </marker>
+        </defs>
+
+        <!-- client -->
+        <rect class="box" x="40" y="40" width="230" height="120" />
+        <text class="title" x="60" y="72">客户端层</text>
+        <text class="txt" x="60" y="98">Web 前端 / 管理端</text>
+        <text class="small" x="60" y="120">- Dashboard / ToolDetail / ToolManage</text>
+        <text class="small" x="60" y="140">- 统一调用 /api/v1/*</text>
+
+        <!-- host app -->
+        <rect class="box box-host" x="330" y="30" width="620" height="520" />
+        <text class="title" x="350" y="58">宿主 Backend（FastAPI）边界</text>
+        <text class="sub" x="350" y="78">入口：backend/main.py</text>
+
+        <!-- middleware -->
+        <rect class="box box-mid" x="360" y="100" width="560" height="120" />
+        <text class="title" x="380" y="128">全局中间件与门禁层</text>
+        <text class="small" x="380" y="150">- 认证鉴权（JWT / users/me）</text>
+        <text class="small" x="380" y="168">- 路径解析：/tools/{id}/features/{feature}</text>
+        <text class="small" x="380" y="186">- APIAccessLog 审计与行为归因（tool_id + feature）</text>
+        <text class="small" x="380" y="204">- ensure_tool_access + runtime_status/is_active</text>
+
+        <!-- host apis -->
+        <rect class="box box-host" x="360" y="250" width="270" height="270" />
+        <text class="title" x="380" y="278">宿主 API 域</text>
+        <text class="small" x="380" y="302">- auth / users</text>
+        <text class="small" x="380" y="322">- permissions / admin_permissions</text>
+        <text class="small" x="380" y="342">- admin_tool_access / audit / releases</text>
+        <text class="small" x="380" y="362">- system tool-visibility 管理</text>
+        <text class="small" x="380" y="392">能力：认证、审批、治理、审计、版本同步</text>
+        <text class="small" x="380" y="420">不承载具体工具业务实现</text>
+
+        <!-- tool gateway -->
+        <rect class="box box-tool" x="650" y="250" width="250" height="270" />
+        <text class="title" x="670" y="278">工具统一门面</text>
+        <text class="small" x="670" y="302">路由：api/v1/tools.py</text>
+        <text class="small" x="670" y="322">- 列表/详情/版本信息</text>
+        <text class="small" x="670" y="342">- Feature 统一入口</text>
+        <text class="small" x="670" y="362">- 默认按 TOOLBOX_TOOL_UPSTREAMS 转发</text>
+        <text class="small" x="670" y="382">- TOOLBOX_LOAD_TOOL_PLUGINS 可选本地加载</text>
+        <text class="small" x="670" y="412">404 语义：</text>
+        <text class="small" x="670" y="430">Tool.name 未映射上游 => 功能不存在</text>
+
+        <!-- plugin boundary -->
+        <rect class="box box-warn" x="960" y="30" width="250" height="360" />
+        <text class="title" x="980" y="58">工具插件边界硬约束</text>
+        <text class="small" x="980" y="84">代码位置：backend/app/tools/plugins/**</text>
+        <text class="small" x="980" y="110">允许：</text>
+        <text class="small" x="980" y="128">app.database / models / schemas</text>
+        <text class="small" x="980" y="146">app.services.* / tools_common</text>
+        <text class="small" x="980" y="172">禁止：</text>
+        <text class="small" x="980" y="190">app.api.v1.admin*</text>
+        <text class="small" x="980" y="208">app.api.v1.rbac / admin_common</text>
+        <text class="small" x="980" y="226">app.core.config_simple</text>
+        <text class="small" x="980" y="244">os.getenv("SECRET_KEY") 直读</text>
+        <text class="small" x="980" y="270">MOS 例外：</text>
+        <text class="small" x="980" y="288">仅 mos_integration_toolbox</text>
+        <text class="small" x="980" y="306">可用 mos_legacy_toolbox_adapter</text>
+        <text class="small" x="980" y="334">CI：scripts/check_tool_plugin_boundaries.py</text>
+
+        <!-- tool runtime -->
+        <rect class="box box-tool" x="650" y="580" width="560" height="200" />
+        <text class="title" x="670" y="608">工具运行时域（与宿主解耦）</text>
+        <text class="small" x="670" y="632">A. 上游独立工具服务（推荐默认）</text>
+        <text class="small" x="670" y="652">- 宿主按 Tool.name -> TOOLBOX_TOOL_UPSTREAMS 转发</text>
+        <text class="small" x="670" y="672">- 路由契约：/api/v1/tools/{tool_id}/features/{feature}</text>
+        <text class="small" x="670" y="696">B. 工具专用进程本地加载（可选）</text>
+        <text class="small" x="670" y="716">- 显式设置 TOOLBOX_LOAD_TOOL_PLUGINS</text>
+        <text class="small" x="670" y="736">- 仅用于工具进程，不建议宿主入口全量加载</text>
+
+        <!-- data/config -->
+        <rect class="box box-data" x="40" y="220" width="230" height="320" />
+        <text class="title" x="60" y="248">数据与配置</text>
+        <text class="small" x="60" y="274">PostgreSQL（核心表）</text>
+        <text class="small" x="60" y="294">- Tool / ToolDisplayConfig</text>
+        <text class="small" x="60" y="314">- UserToolPermission / ToolOwner</text>
+        <text class="small" x="60" y="334">- ToolRelease / APIAccessLog</text>
+        <text class="small" x="60" y="360">运行配置</text>
+        <text class="small" x="60" y="380">- TOOLBOX_TOOL_UPSTREAMS</text>
+        <text class="small" x="60" y="400">- TOOLBOX_LOAD_TOOL_PLUGINS</text>
+        <text class="small" x="60" y="420">- TOOLBOX_DEPLOY_ENV / external_hosts</text>
+        <text class="small" x="60" y="440">- TOOLBOX_VISIBLE_TOOL_KEYS</text>
+        <text class="small" x="60" y="460">- SECRET_KEY（经 app.services.secret_key）</text>
+        <text class="small" x="60" y="486">可见性持久化</text>
+        <text class="small" x="60" y="506">backend/runtime/tool_visibility.json</text>
+
+        <!-- policy -->
+        <rect class="box" x="40" y="580" width="560" height="200" />
+        <text class="title" x="60" y="608">治理与运行策略</text>
+        <text class="small" x="60" y="634">1) 外网/内网可见性：TOOLBOX_DEPLOY_ENV > Host 命中 external_hosts > 默认内网</text>
+        <text class="small" x="60" y="654">2) 管理接口：GET/PUT /api/v1/admin/system/tool-visibility</text>
+        <text class="small" x="60" y="674">3) 版本治理：工具自报 /api/v1/meta/version，宿主执行同步并记录 ToolRelease</text>
+        <text class="small" x="60" y="694">4) runtime_status=updating 时业务 API 对普通用户 503（超管可排障）</text>
+        <text class="small" x="60" y="714">5) 所有列表强制后端分页（skip/limit + total/items）</text>
+        <text class="small" x="60" y="734">6) 工具前端扩展走 registry.ts，避免在壳层写 tool.name 硬编码分支</text>
+
+        <!-- edges -->
+        <path class="edge" d="M270 100 L360 100" />
+        <text class="edge-label" x="282" y="90">HTTP /api/v1/*</text>
+
+        <path class="edge" d="M500 220 L500 250" />
+        <text class="edge-label" x="510" y="240">鉴权 + 审计后分发</text>
+
+        <path class="edge" d="M630 370 L650 370" />
+        <text class="edge-label" x="636" y="360">工具入口</text>
+
+        <path class="edge" d="M775 520 L775 580" />
+        <text class="edge-label" x="786" y="555">转发 / 条件加载</text>
+
+        <path class="edge" d="M270 370 L360 370" />
+        <text class="edge-label" x="280" y="360">DB + 可见性配置读取</text>
+
+        <path class="edge edge-dash" d="M920 370 L960 370" />
+        <text class="edge-label" x="914" y="358">边界校验</text>
+
+        <path class="edge edge-dash" d="M1080 390 L1080 580" />
+        <text class="edge-label" x="1090" y="500">规范约束工具实现</text>
+      </svg>
+    </div>
+  </div>
+</body>
+</html>

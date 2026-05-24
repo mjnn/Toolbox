@@ -1,6 +1,11 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api/auth'
+import type { UserInDB } from '@/api/types'
+
+function isPlatformStaff(user: UserInDB | null | undefined): boolean {
+  return !!(user?.is_superuser || user?.is_platform_admin)
+}
 
 const routes: RouteRecordRaw[] = [
   {
@@ -31,7 +36,7 @@ const routes: RouteRecordRaw[] = [
     path: '/users',
     name: 'Users',
     component: () => import('@/views/Users.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { requiresAuth: true, requiresPlatformStaff: true }
   },
   {
     path: '/tools',
@@ -83,19 +88,23 @@ const routes: RouteRecordRaw[] = [
     path: '/audit-logs',
     name: 'AuditLogs',
     component: () => import('@/views/AuditLogs.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { requiresAuth: true, requiresPlatformStaff: true }
   },
   {
     path: '/feedback-admin',
     name: 'FeedbackAdmin',
     component: () => import('@/views/FeedbackAdmin.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { requiresAuth: true, requiresPlatformStaff: true }
   },
   {
     path: '/system-db-optimization',
-    name: 'SystemDbOptimization',
+    redirect: '/system-other-settings'
+  },
+  {
+    path: '/system-other-settings',
+    name: 'SystemOtherSettings',
     component: () => import('@/views/DatabaseOptimization.vue'),
-    meta: { requiresAuth: true, requiresAdmin: true }
+    meta: { requiresAuth: true, requiresSuperAdmin: true }
   },
   {
     path: '/:pathMatch(.*)*',
@@ -122,17 +131,37 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  if (to.meta.requiresAdmin && isAuthenticated) {
+  const loadProfileIfNeeded = async () => {
     if (!authStore.userInfo) {
       try {
         const user = await authApi.getCurrentUser()
         authStore.setUserInfo(user)
       } catch {
         next('/login')
-        return
+        throw new Error('auth')
       }
     }
+  }
+
+  if (to.meta.requiresSuperAdmin && isAuthenticated) {
+    try {
+      await loadProfileIfNeeded()
+    } catch {
+      return
+    }
     if (!authStore.userInfo?.is_superuser) {
+      next('/')
+      return
+    }
+  }
+
+  if (to.meta.requiresPlatformStaff && isAuthenticated) {
+    try {
+      await loadProfileIfNeeded()
+    } catch {
+      return
+    }
+    if (!isPlatformStaff(authStore.userInfo)) {
       next('/')
       return
     }

@@ -68,7 +68,7 @@ _COPY_ORDER = [
 ]
 
 # TRUNCATE 时需包含 PG 上可能存在但 SQLite 无数据的表
-_TRUNCATE_EXTRA = ["mos_token_pool_entry"]
+_TRUNCATE_EXTRA = ["serviceidcsvexportconfig", "mos_token_pool_entry"]
 
 
 def _pg_ident(name: str) -> str:

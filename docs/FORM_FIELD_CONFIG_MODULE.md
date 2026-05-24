@@ -66,6 +66,22 @@
 - `frontend/src/components/tool-manage/ServiceIdRegistryManageTab.vue`
   - 字段配置 Tab 支持新增字段、删除字段、编辑展示形式与校验规则。
   - 表格渲染已抽为通用组件：`frontend/src/components/form-config/FieldConfigManagerTable.vue`。
+  - **Service ID 规则库与字段配置合一**：`service_type` / `psga_availability` / `scope_type` / `apn_type` 四个内置单选字段的「可选值」不在独立「规则治理」Tab 维护，而在字段配置表中点击「配置选项」弹窗内，通过 `ServiceIdRuleCategoryEditor.vue` 调用既有 rule-options API（与提交校验用的规则表一致）。详见 `.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`。
+
+#### 3.3.1 `FieldConfigManagerTable.vue`（通用字段配置表）
+
+- **行数据**：表格行在父组件中通常扩展 `allowed_values_text: string`（逗号分隔），与 `FormFieldConfigItem.allowed_values` 对应，保存时再 `split` 提交。
+- **文本 / 长文本（`text` / `textarea`）**：在表格「允许值 / 选项」列直接编辑逗号分隔允许值（可选）。
+- **单选 / 多选（`single_select` / `multi_select`）**：该列显示「配置选项」链接；点击打开对话框维护选项。
+- **默认弹窗内容**：`frontend/src/components/form-config/SelectOptionValuesEditor.vue`（标签增删 + 回车添加，写回 `allowed_values_text`）。
+- **扩展点（具名插槽）**：`#selectOptionsEditor`，参数 `{ row }`。若工具的可选项来源不是静态 `allowed_values`（例如 Service ID 的规则库），在父页面提供该插槽并自行渲染编辑器；未提供时使用默认 `SelectOptionValuesEditor`。
+- **导出类型**：`FieldConfigTableRow`（`FormFieldConfigItem & { allowed_values_text: string }`），便于父组件与类型检查一致。
+
+#### 3.3.2 `ServiceIdRuleCategoryEditor.vue`（仅 Service ID 规则库 UI）
+
+- 路径：`frontend/src/components/tool-manage/ServiceIdRuleCategoryEditor.vue`。
+- **职责**：按 `ServiceRuleCategory` 分页展示规则值、新增、启用/停用、删除；调用 `toolsApi` 的 `getServiceIdRuleOptionsPage` / `createServiceIdRuleOption` / `updateServiceIdRuleOption` / `deleteServiceIdRuleOption`（管理端 `include_inactive: true`）。
+- **与后端关系**：主记录提交时，上述四字段仍由 `service_id_registry/routes.py` 中 `_get_active_rule_values` 校验，与字段配置里的 `allowed_values` 并行存在时以规则表为准；弹窗内维护的是规则表数据。
 
 ### 3.4 使用页（表单渲染侧）
 
@@ -84,14 +100,16 @@
 3. 业务提交接口增加 `extra_fields` 入参与返回值。
 4. 在前端工具管理页接入字段配置面板，在工具使用页接入动态字段渲染。
    - 推荐直接复用：
-     - `FieldConfigManagerTable.vue`（字段配置列表）
+     - `FieldConfigManagerTable.vue`（字段配置列表；单选/多选用弹窗 + 可选 `#selectOptionsEditor` 插槽）
+     - `SelectOptionValuesEditor.vue`（静态选项编辑；可被插槽替换）
      - `DynamicFieldInputs.vue`（动态字段输入区）
 5. 若工具存在内置字段，保持「内置字段不可删，自定义字段可删」策略，降低风险。
 
 ## 5. 设计注意事项
 
 - 建议统一 `field_key` 规则：小写字母开头，后续仅小写/数字/下划线。
-- `single_select/multi_select` 必须维护可选值集合，避免前后端展示和校验不一致。
+- `single_select/multi_select` 必须维护可选值集合，避免前后端展示和校验不一致；前端通过 `FieldConfigManagerTable` 弹窗或 `#selectOptionsEditor` 保证管理侧有明确编辑入口。
+- **若选项来自独立规则表**（如 Service ID）：不要仅依赖 `allowed_values` 文本列；用插槽接入专用编辑器，并与后端校验数据源保持一致。
 - 删除字段时建议级联清理历史值，避免脏数据长期堆积。
 - 字段值使用 JSON 存储时，要在读写层统一做类型归一化（字符串 vs 字符串数组）。
 
@@ -111,6 +129,7 @@
 ## 7. Agent 自动复用入口
 
 - 对话内直接复用模板：`docs/templates/FORM_FIELD_CAPABILITY_AGENT_TEMPLATE.md`
+- 项目内补充快照（字段配置表 + Service ID 规则合一）：`.docs/FIELD_CONFIG_MANAGER_AND_SERVICE_ID_RULES.md`
 - 自动触发规则：`.cursor/rules/form-field-capability-reuse.mdc`
   - 当需求中出现“新增/删除字段、字段类型、动态表单、字段校验”等语义时，Agent 应默认走本模块方案。
 - 文件范围增强规则：`.cursor/rules/form-field-capability-reuse-scoped.mdc`

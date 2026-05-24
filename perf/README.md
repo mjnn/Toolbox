@@ -4,9 +4,9 @@
 
 ## 1. 前置条件
 
-- 已安装 [k6](https://k6.io/docs/get-started/installation/)
+- **k6**：安装 [k6](https://k6.io/docs/get-started/installation/) 并加入 PATH；或将 `k6.exe` 放在便携包下的 `ops\` 目录（`run-perf-k6.ps1` 会尝试该路径）。
 - 已拿到可用 `access_token`
-- 后端服务可访问（默认 `http://127.0.0.1:3001`）
+- 服务可访问：脚本默认 `BaseUrl` 为 `http://127.0.0.1:3000`（便携单进程默认端口）；本地纯后端联调可显式传 `http://127.0.0.1:3001` 等。
 
 ## 2. 快速执行
 

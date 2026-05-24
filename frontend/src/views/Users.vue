@@ -12,7 +12,7 @@
           <span>用户列表</span>
           <div class="header-actions">
             <el-button
-              v-if="isAdmin"
+              v-if="isPlatformStaff"
               plain
               :loading="downloadingTemplate"
               @click="downloadImportTemplate"
@@ -20,14 +20,14 @@
               下载Excel模板
             </el-button>
             <el-upload
-              v-if="isAdmin"
+              v-if="isPlatformStaff"
               :show-file-list="false"
               accept=".xlsx,.xlsm"
               :before-upload="beforeExcelUpload"
             >
               <el-button type="primary" plain :loading="importingUsers">Excel 批量导入用户</el-button>
             </el-upload>
-            <el-tag type="info" size="small">管理员可配置 tool_user / tool_owner</el-tag>
+            <el-tag type="info" size="small">超级管理员可设「管理员」；管理员可配置工具角色与 Excel「可用工具」列</el-tag>
           </div>
         </div>
       </template>
@@ -55,102 +55,195 @@
         </el-form-item>
       </el-form>
       
-      <el-table
-        :data="users"
-        v-loading="loading"
-        stripe
-        style="width: 100%"
-      >
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用户名" />
-        <el-table-column prop="email" label="邮箱" />
-        <el-table-column prop="full_name" label="姓名" width="120" />
-        <el-table-column prop="department" label="部门" width="120">
-          <template #default="scope">{{ scope.row.department || '—' }}</template>
-        </el-table-column>
-        <el-table-column label="审核" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.is_approved ? 'success' : 'warning'" size="small">
-              {{ scope.row.is_approved ? '已通过' : '待审核' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="is_active" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
-              {{ scope.row.is_active ? '活跃' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="is_superuser" label="管理员" width="100">
-          <template #default="scope">
-            <el-tag :type="scope.row.is_superuser ? 'warning' : 'info'">
-              {{ scope.row.is_superuser ? '是' : '否' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="scope">
-            {{ formatDate(scope.row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="角色" width="240">
-          <template #default="scope">
-            <div class="role-tags">
-              <el-tag
-                v-for="role in getRoles(scope.row.id)"
-                :key="`${scope.row.id}-${role}`"
-                size="small"
-                type="success"
-              >
-                {{ getRoleLabel(role) }}
+      <div v-if="!isMobile" class="table-scroll">
+        <el-table
+          :data="users"
+          v-loading="loading"
+          stripe
+          style="width: 100%"
+        >
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column prop="username" label="用户名" />
+          <el-table-column prop="email" label="邮箱" />
+          <el-table-column prop="full_name" label="姓名" width="120" />
+          <el-table-column prop="department" label="部门" width="120">
+            <template #default="scope">{{ scope.row.department || '—' }}</template>
+          </el-table-column>
+          <el-table-column label="审核" width="100">
+            <template #default="scope">
+              <el-tag :type="scope.row.is_approved ? 'success' : 'warning'" size="small">
+                {{ scope.row.is_approved ? '已通过' : '待审核' }}
               </el-tag>
-              <span v-if="getRoles(scope.row.id).length === 0" class="empty-role">未分配</span>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="420" fixed="right">
-          <template #default="scope">
+            </template>
+          </el-table-column>
+          <el-table-column prop="is_active" label="状态" width="100">
+            <template #default="scope">
+              <el-tag :type="scope.row.is_active ? 'success' : 'danger'">
+                {{ scope.row.is_active ? '活跃' : '禁用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="平台身份" width="120">
+            <template #default="scope">
+              <el-tag v-if="scope.row.is_superuser" type="danger" size="small">超级管理员</el-tag>
+              <el-tag v-else-if="scope.row.is_platform_admin" type="warning" size="small">管理员</el-tag>
+              <span v-else class="empty-role">—</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" width="180">
+            <template #default="scope">
+              {{ formatDate(scope.row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="角色" width="240">
+            <template #default="scope">
+              <div class="role-tags">
+                <el-tag
+                  v-for="role in getRoles(scope.row.id)"
+                  :key="`${scope.row.id}-${role}`"
+                  size="small"
+                  type="success"
+                >
+                  {{ getRoleLabel(role) }}
+                </el-tag>
+                <span v-if="getRoles(scope.row.id).length === 0" class="empty-role">未分配</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="600" fixed="right">
+            <template #default="scope">
+              <el-button
+                v-if="!scope.row.is_approved && !scope.row.is_superuser"
+                type="success"
+                size="small"
+                :loading="approvingId === scope.row.id"
+                @click="approveUser(scope.row)"
+              >
+                通过审核
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
+                :disabled="!isPlatformStaff"
+                @click="openRoleDialog(scope.row)"
+              >
+                配置角色
+              </el-button>
+              <el-button
+                v-if="isPlatformStaff"
+                type="primary"
+                size="small"
+                plain
+                :loading="toolsDialogLoadingId === scope.row.id"
+                @click="openToolsDialog(scope.row)"
+              >
+                可用工具
+              </el-button>
+              <el-button
+                v-if="isSuperUser && scope.row.id !== currentUser?.id && !scope.row.is_superuser && scope.row.is_active"
+                type="danger"
+                size="small"
+                plain
+                :loading="transferringId === scope.row.id"
+                @click="transferSuper(scope.row)"
+              >
+                移交超管
+              </el-button>
+              <el-button
+                v-if="isPlatformStaff && scope.row.id !== currentUser?.id"
+                type="warning"
+                size="small"
+                plain
+                :loading="resettingUserId === scope.row.id"
+                @click="resetUserPassword(scope.row)"
+              >
+                重置密码
+              </el-button>
+              <el-button
+                v-if="isPlatformStaff && scope.row.id !== currentUser?.id && !scope.row.is_superuser"
+                type="danger"
+                size="small"
+                plain
+                :loading="deletingUserId === scope.row.id"
+                @click="deleteUserAdmin(scope.row)"
+              >
+                注销用户
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <div v-else class="mobile-user-list" v-loading="loading">
+        <el-empty v-if="users.length === 0" description="暂无用户数据" />
+        <el-card v-for="u in users" :key="u.id" class="mobile-user-card" shadow="never">
+          <div class="mobile-user-top">
+            <div class="mobile-user-name">{{ u.username }}</div>
+            <el-tag size="small" :type="u.is_approved ? 'success' : 'warning'">{{ u.is_approved ? '已通过' : '待审核' }}</el-tag>
+          </div>
+          <div class="mobile-user-meta">邮箱：{{ u.email }}</div>
+          <div class="mobile-user-meta">姓名：{{ u.full_name || '—' }} / 部门：{{ u.department || '—' }}</div>
+          <div class="mobile-user-meta">创建：{{ formatDate(u.created_at) }}</div>
+          <div class="mobile-user-tags">
+            <el-tag size="small" :type="u.is_active ? 'success' : 'danger'">{{ u.is_active ? '活跃' : '禁用' }}</el-tag>
+            <el-tag size="small" :type="u.is_superuser ? 'warning' : 'info'">{{ u.is_superuser ? '管理员' : '普通用户' }}</el-tag>
+            <el-tag v-for="role in getRoles(u.id)" :key="`m-${u.id}-${role}`" size="small" type="success">
+              {{ getRoleLabel(role) }}
+            </el-tag>
+          </div>
+          <div class="mobile-user-actions">
             <el-button
-              v-if="!scope.row.is_approved && !scope.row.is_superuser"
+              v-if="!u.is_approved && !u.is_superuser"
               type="success"
               size="small"
-              :loading="approvingId === scope.row.id"
-              @click="approveUser(scope.row)"
+              :loading="approvingId === u.id"
+              @click="approveUser(u)"
             >
               通过审核
             </el-button>
+            <el-button type="primary" size="small" :disabled="!isPlatformStaff" @click="openRoleDialog(u)">配置角色</el-button>
             <el-button
-              type="primary"
+              v-if="isSuperUser && u.id !== currentUser?.id && !u.is_superuser && u.is_active"
+              type="danger"
               size="small"
-              :disabled="!isAdmin"
-              @click="openRoleDialog(scope.row)"
+              plain
+              :loading="transferringId === u.id"
+              @click="transferSuper(u)"
             >
-              配置角色
+              移交超管
             </el-button>
             <el-button
-              v-if="isAdmin && scope.row.id !== currentUser?.id"
+              v-if="isPlatformStaff"
+              type="primary"
+              size="small"
+              plain
+              :loading="toolsDialogLoadingId === u.id"
+              @click="openToolsDialog(u)"
+            >
+              可用工具
+            </el-button>
+            <el-button
+              v-if="isPlatformStaff && u.id !== currentUser?.id"
               type="warning"
               size="small"
               plain
-              :loading="resettingUserId === scope.row.id"
-              @click="resetUserPassword(scope.row)"
+              :loading="resettingUserId === u.id"
+              @click="resetUserPassword(u)"
             >
               重置密码
             </el-button>
             <el-button
-              v-if="isAdmin && scope.row.id !== currentUser?.id && !scope.row.is_superuser"
+              v-if="isPlatformStaff && u.id !== currentUser?.id && !u.is_superuser"
               type="danger"
               size="small"
               plain
-              :loading="deletingUserId === scope.row.id"
-              @click="deleteUserAdmin(scope.row)"
+              :loading="deletingUserId === u.id"
+              @click="deleteUserAdmin(u)"
             >
               注销用户
             </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </el-card>
+      </div>
       
       <div class="pagination-wrapper">
         <el-pagination
@@ -165,6 +258,38 @@
       </div>
     </el-card>
 
+    <el-dialog v-model="toolsDialogVisible" title="配置可用工具" width="560px" destroy-on-close>
+      <div v-if="toolsDialogUser" class="tools-dialog-user">
+        用户：{{ toolsDialogUser.username }}（{{ toolsDialogUser.email }}）
+      </div>
+      <p class="tools-dialog-hint">
+        勾选该用户可直接使用的工具（保存后与其余工具的权限记录将按此列表同步；仅可选择当前未停用的工具）。
+      </p>
+      <div v-loading="toolsDialogInnerLoading" class="tools-checkbox-wrap">
+        <el-empty
+          v-if="!toolsDialogInnerLoading && toolAssignmentOptions.length === 0"
+          description="未加载到工具列表，请稍后重试"
+        />
+        <el-checkbox-group v-else v-model="selectedToolIds" class="tools-checkbox-group">
+          <el-checkbox
+            v-for="opt in toolAssignmentOptions"
+            :key="opt.id"
+            :label="opt.id"
+            :disabled="!opt.is_active"
+          >
+            {{ opt.display_name || opt.name }}{{ opt.is_active ? '' : '（已停用）'
+            }}{{ opt.runtime_status === 'updating' ? '（更新中）' : '' }}
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
+      <template #footer>
+        <el-button @click="toolsDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="savingTools" :disabled="toolAssignmentOptions.length === 0" @click="saveToolsDialog">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog
       v-model="roleDialogVisible"
       title="配置用户角色"
@@ -176,6 +301,12 @@
         </div>
         <el-checkbox v-model="roleForm.tool_user">工具用户（可申请工具权限）</el-checkbox>
         <el-checkbox v-model="roleForm.tool_owner">工具负责人（可审批被指派工具）</el-checkbox>
+        <el-checkbox
+          v-if="isSuperUser && selectedUser && !selectedUser.is_superuser"
+          v-model="roleForm.platform_admin"
+        >
+          平台管理员（用户与工具治理，不含系统配置）
+        </el-checkbox>
       </div>
       <template #footer>
         <el-button @click="roleDialogVisible = false">取消</el-button>
@@ -206,13 +337,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { usersApi } from '@/api/users'
 import { adminApi } from '@/api/admin'
 import { useAuthStore } from '@/stores/auth'
-import type { AdminUserImportResponse, RoleName, UserInDB } from '@/api/types'
+import type { AdminToolAssignmentOption, AdminUserImportResponse, RoleName, UserInDB } from '@/api/types'
 import { formatDateTime as formatDate } from '@/utils/datetime'
 import { goBackOrFallback } from '@/utils/navigation'
 
@@ -229,7 +360,7 @@ const roleMap = ref<Record<number, RoleName[]>>({})
 const roleDialogVisible = ref(false)
 const savingRoles = ref(false)
 const selectedUser = ref<UserInDB | null>(null)
-const roleForm = ref({ tool_user: false, tool_owner: false })
+const roleForm = ref({ tool_user: false, tool_owner: false, platform_admin: false })
 const approvalFilter = ref<'all' | 'pending' | 'approved'>('all')
 const approvingId = ref<number | null>(null)
 const resettingUserId = ref<number | null>(null)
@@ -238,12 +369,28 @@ const importingUsers = ref(false)
 const downloadingTemplate = ref(false)
 const importResultVisible = ref(false)
 const importResult = ref<AdminUserImportResponse | null>(null)
+const isMobile = ref(false)
+const toolAssignmentOptions = ref<AdminToolAssignmentOption[]>([])
+const toolsDialogVisible = ref(false)
+const toolsDialogUser = ref<UserInDB | null>(null)
+const toolsDialogLoadingId = ref<number | null>(null)
+const toolsDialogInnerLoading = ref(false)
+const selectedToolIds = ref<number[]>([])
+const savingTools = ref(false)
+const transferringId = ref<number | null>(null)
 
 const currentUser = computed(() => authStore.userInfo)
-const isAdmin = computed(() => currentUser.value?.is_superuser || false)
+const isPlatformStaff = computed(
+  () => !!(currentUser.value?.is_superuser || currentUser.value?.is_platform_admin)
+)
+const isSuperUser = computed(() => !!currentUser.value?.is_superuser)
 
 const goBack = () => {
   goBackOrFallback(router, '/')
+}
+
+const updateViewportState = () => {
+  isMobile.value = window.innerWidth <= 768
 }
 
 const onUserSearch = () => {
@@ -277,7 +424,7 @@ const fetchUsers = async () => {
     )
     users.value = res.items
     total.value = res.total
-    if (isAdmin.value) {
+    if (isPlatformStaff.value) {
       await fetchUserRoles(res.items)
     }
   } catch (error: any) {
@@ -323,6 +470,7 @@ const getRoles = (userId: number): RoleName[] => {
 
 const getRoleLabel = (role: RoleName): string => {
   if (role === 'tool_owner') return '工具负责人'
+  if (role === 'platform_admin') return '平台管理员'
   return '工具用户'
 }
 
@@ -451,12 +599,65 @@ const resetUserPassword = async (user: UserInDB) => {
   }
 }
 
+const loadToolAssignmentOptions = async () => {
+  if (!isPlatformStaff.value) return
+  try {
+    toolAssignmentOptions.value = await adminApi.getToolAssignmentOptions()
+  } catch (error: any) {
+    console.error(error)
+    toolAssignmentOptions.value = []
+    ElMessage.error(error.message || '加载工具列表失败')
+  }
+}
+
+const openToolsDialog = async (user: UserInDB) => {
+  if (!isPlatformStaff.value) return
+  toolsDialogUser.value = user
+  toolsDialogVisible.value = true
+  toolsDialogInnerLoading.value = true
+  toolsDialogLoadingId.value = user.id
+  selectedToolIds.value = []
+  try {
+    if (toolAssignmentOptions.value.length === 0) {
+      await loadToolAssignmentOptions()
+    }
+    const { tool_ids } = await adminApi.getUserAllowedTools(user.id)
+    const activeIdSet = new Set(
+      toolAssignmentOptions.value.filter((o) => o.is_active).map((o) => o.id)
+    )
+    selectedToolIds.value = tool_ids.filter((id) => activeIdSet.has(id))
+  } catch (error: any) {
+    ElMessage.error(error.message || '加载用户工具权限失败')
+    toolsDialogVisible.value = false
+  } finally {
+    toolsDialogInnerLoading.value = false
+    toolsDialogLoadingId.value = null
+  }
+}
+
+const saveToolsDialog = async () => {
+  if (!toolsDialogUser.value) return
+  savingTools.value = true
+  try {
+    await adminApi.updateUserAllowedTools(toolsDialogUser.value.id, {
+      tool_ids: [...selectedToolIds.value],
+    })
+    ElMessage.success('可用工具已更新')
+    toolsDialogVisible.value = false
+  } catch (error: any) {
+    ElMessage.error(error.message || '保存失败')
+  } finally {
+    savingTools.value = false
+  }
+}
+
 const openRoleDialog = (user: UserInDB) => {
   selectedUser.value = user
   const roles = getRoles(user.id)
   roleForm.value = {
     tool_user: roles.includes('tool_user'),
     tool_owner: roles.includes('tool_owner'),
+    platform_admin: roles.includes('platform_admin'),
   }
   roleDialogVisible.value = true
 }
@@ -470,6 +671,11 @@ const saveRoleConfig = async () => {
     const desiredRoles: RoleName[] = []
     if (roleForm.value.tool_user) desiredRoles.push('tool_user')
     if (roleForm.value.tool_owner) desiredRoles.push('tool_owner')
+    if (isSuperUser.value && roleForm.value.platform_admin) {
+      desiredRoles.push('platform_admin')
+    } else if (!isSuperUser.value && currentRoles.has('platform_admin')) {
+      desiredRoles.push('platform_admin')
+    }
 
     for (const role of desiredRoles) {
       if (!currentRoles.has(role)) {
@@ -492,11 +698,42 @@ const saveRoleConfig = async () => {
   }
 }
 
+const transferSuper = async (user: UserInDB) => {
+  try {
+    await ElMessageBox.confirm(
+      `将「超级管理员」身份转移给用户「${user.username}」？您将保留账号并自动获得「平台管理员」角色，需重新登录。`,
+      '移交超级管理员',
+      { type: 'warning', confirmButtonText: '确定移交', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  transferringId.value = user.id
+  try {
+    await adminApi.transferSuperAdmin(user.id)
+    ElMessage.success('超级管理员已移交，请重新登录')
+    authStore.clearTokens()
+    router.push('/login')
+  } catch (error: any) {
+    ElMessage.error(error.message || '操作失败')
+  } finally {
+    transferringId.value = null
+  }
+}
+
 onMounted(() => {
-  if (!isAdmin.value) {
-    ElMessage.warning('您没有管理员权限，只能查看用户列表')
+  updateViewportState()
+  window.addEventListener('resize', updateViewportState)
+  if (!isPlatformStaff.value) {
+    ElMessage.warning('您没有平台管理权限，无法管理用户列表')
+  } else {
+    loadToolAssignmentOptions()
   }
   fetchUsers()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewportState)
 })
 </script>
 
@@ -533,7 +770,7 @@ onMounted(() => {
 }
 
 .empty-role {
-  color: #999;
+  color: #606266;
   font-size: 12px;
 }
 
@@ -546,6 +783,32 @@ onMounted(() => {
 .role-dialog-user {
   color: #666;
   font-size: 14px;
+}
+
+.tools-dialog-user {
+  color: #606266;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.tools-dialog-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.tools-checkbox-wrap {
+  min-height: 120px;
+}
+
+.tools-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .pagination-wrapper {
@@ -561,5 +824,69 @@ onMounted(() => {
 .import-result {
   display: flex;
   flex-direction: column;
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.mobile-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mobile-user-card {
+  border: 1px solid #ebeef5;
+}
+
+.mobile-user-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobile-user-name {
+  font-weight: 600;
+}
+
+.mobile-user-meta {
+  margin-top: 6px;
+  color: #606266;
+  font-size: 13px;
+}
+
+.mobile-user-tags,
+.mobile-user-actions {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .users-container {
+    padding: 12px;
+  }
+
+  .card-header,
+  .header-actions {
+    flex-wrap: wrap;
+  }
+
+  .page-header-title {
+    font-size: 16px;
+  }
+
+  .main-card {
+    margin-top: 12px;
+  }
+
+  .pagination-wrapper {
+    justify-content: flex-start;
+    margin-top: 12px;
+  }
 }
 </style>

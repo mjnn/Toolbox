@@ -34,7 +34,7 @@ version: 1.0
 | 前端 | Vue 3、TypeScript、Vite、Pinia、Element Plus、Vue Router |
 | 后端 | FastAPI、SQLModel、**PostgreSQL**（部署与发布标准数据库；本地 `start-dev` 支持 SQLite 快捷模式）。JWT（python-jose） |
 | 契约 | `contracts/tool.manifest.schema.json`（各插件 `tool.manifest.json` 校验） |
-| 打包 | 可选：`scripts/build-release.ps1`（前端 build + PyInstaller 便携后端等） |
+| 打包 | 可选：`scripts/build-release.ps1`（前端 build + PyInstaller 便携后端） |
 
 ### 1.3 仓库顶层结构（维护时最常碰到的部分）
 
@@ -77,7 +77,7 @@ Toolbox_Project/
 |------|----------|
 | `backend/main.py` | FastAPI 应用、CORS、静态资源、`/api/v1` 路由挂载、**访问日志中间件**（解析 `/api/v1/tools/{id}/features/...`）、SPA fallback、`/health`。 |
 | `backend/app/api/v1/api.py` | 聚合 `auth`、`users`、`tools`、`permissions`、`admin`。 |
-| `backend/app/api/v1/tools.py` | 工具列表/详情/发布记录；**必须在此 `include_router` 注册各工具插件路由**。 |
+| `backend/app/api/v1/tools.py` | 工具列表/详情/发布记录；按 `TOOLBOX_TOOL_UPSTREAMS` 统一转发工具 `features` 请求。 |
 | `backend/app/api/v1/tools_common.py` | `ensure_tool_access`、工具不可用/过期、按工具名校验、管理权限辅助。 |
 | `backend/app/api/v1/admin.py` | 超管/工具负责人侧治理 API。 |
 | `backend/app/database.py` | 建表、轻量迁移、种子数据（系统角色、内置 `Tool`、行为目录同步等）。 |
@@ -86,7 +86,7 @@ Toolbox_Project/
 
 **系统级数据库优化能力**（已落地）：
 
-- 管理入口位于 Dashboard 左侧栏「数据库优化」（仅超管可见）。
+- Dashboard 左侧栏 **其他配置**（仅超管）：**内外网工具可见性**可在线编辑；数据库连接池等参数为 **只读** 展示与连通性检测，调参在「系统配置」编辑 `.env` 或维护期编辑部署机配置。
 - 后端接口统一在 admin 域：`/api/v1/admin/system/db-optimization*`。
 - 该能力不再挂在某个工具的管理子页中。
 
@@ -121,6 +121,8 @@ Toolbox_Project/
 | 浏览器调 API | 仍走相对路径 `/api/v1/...`（由 Vite 代理到 3001） |
 
 修改后端端口时，**必须**同步修改 `vite.config.ts` 中的 `server.proxy`，否则前端联调失败。
+
+**与 Docker / ECS 的区别**：上表 **仅**适用于根目录 `start-dev.cmd` / `scripts/start-dev.ps1` 的「前后端拆分」联调。单容器镜像（根目录 `Dockerfile`、`run_server.py`）与常见 ECS compose 往往在 **容器内监听单一端口（如 3000）** 并同时提供 API 与静态资源；验证外网或 compose 时 **以该环境的端口映射为准**，不要照搬「后端在 3001」。
 
 **开发启动参数（`start-dev.cmd`）**：
 
@@ -163,7 +165,7 @@ powershell -File scripts/run-ci-tool-checks.ps1
 
 包含：manifest 与 `contracts/tool.manifest.schema.json` 校验、插件禁止直接 import `app.api.v1.admin` 的边界检查。
 
-前端生产构建：`frontend` 目录下 `npm run build`。详细验收项见 `TOOL_INTEGRATION_STANDARD.md` §10。
+前端生产构建：`frontend` 目录下 **`pnpm install --frozen-lockfile`**（首次或锁变更后）与 **`pnpm run build`**（与 `.github/workflows/ci.yml`、根目录 `Dockerfile` 一致）。详细验收项见 `TOOL_INTEGRATION_STANDARD.md` §10。
 
 ---
 
@@ -193,7 +195,7 @@ powershell -File scripts/run-ci-tool-checks.ps1
 2. 确认 `tool_key` 与数据库 `Tool.name`、前端 registry 键**三者一致**。
 3. 后端：在插件中实现路由；在 `tools.py` 注册 router；种子与行为目录按 `database.py` / `tool_behavior_catalog.py` 约定更新。
 4. 前端：API 方法、`registry.ts`、详情/管理子组件；列表**分页**与 §7.4 对齐。
-5. 跑 `run-ci-tool-checks.ps1` 与 `npm run build`，并按 §10 做手工冒烟。
+5. 跑 `run-ci-tool-checks.ps1` 与 `pnpm run build`（`frontend` 目录，必要时先 `pnpm install --frozen-lockfile`），并按 §10 做手工冒烟。
 
 ### 2.4 通用提示词模板（中文，可直接复制给 Agent）
 
@@ -242,7 +244,7 @@ powershell -File scripts/run-ci-tool-checks.ps1
 3. 代码修改（直接落地）
 4. 验证结果（至少包含）
    - powershell -File scripts/run-ci-tool-checks.ps1
-   - frontend 下 npm run build
+   - `frontend` 下 `pnpm install --frozen-lockfile`（若需要）与 `pnpm run build`
 5. 风险与回滚点（若改宿主必须写）
 
 【本次任务输入（由我填写）】
@@ -258,14 +260,14 @@ powershell -File scripts/run-ci-tool-checks.ps1
 ### 2.5 新工具的标准清单（Checklist）
 
 - [ ] `tool.manifest.json` 通过 Schema；`feature_slugs` / `behavior_catalog` 与路由一致。
-- [ ] `backend/app/api/v1/tools.py` 已 `include_router`。
+- [ ] `TOOLBOX_TOOL_UPSTREAMS` 已配置，且包含当前工具 `Tool.name` 的上游映射。
 - [ ] `database.py` 种子确保存在对应 `Tool` 行；`default_behavior_catalogs()` 含新工具（若需要默认中文行为名）。
 - [ ] `registry.ts` 已映射详情面板与管理 Tab（若需要）。
-- [ ] `run-ci-tool-checks.ps1` 与 `npm run build` 通过；§10 冒烟通过。
+- [ ] `run-ci-tool-checks.ps1` 与 `pnpm run build`（`frontend`）通过；§10 冒烟通过。
 
 ### 2.6 常见失误（Agent 与人类都需避免）
 
-1. **忘记在 `tools.py` 注册插件**，导致 404 或路由不可达。
+1. **忘记配置 `TOOLBOX_TOOL_UPSTREAMS`**（或 key 与 `Tool.name` 不一致），导致 404 或路由不可达。
 2. **功能路径不满足** `/features/...` 约定，使用记录无法关联 `tool_id`。
 3. **在宿主页面写工具名分支**，后续工具增多时无法维护。
 4. **行为目录未更新**，管理页「使用记录」中文名不准或回退为 slug 拼接。

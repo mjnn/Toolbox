@@ -8,7 +8,7 @@ from sqlalchemy import delete, func, or_
 from sqlmodel import Session, select
 
 from app.database import get_session
-from app.models import Feedback, FeedbackCategory, Notification, Tool, ToolAnnouncement, User
+from app.models import Feedback, FeedbackCategory, Notification, Role, Tool, ToolAnnouncement, User, UserRole
 from app.schemas import (
     AccountDeleteConfirm,
     FeedbackCreate,
@@ -24,6 +24,8 @@ from app.schemas import (
 )
 from app.services.user_deletion import delete_user_and_related
 from app.api.v1.auth import verify_token, oauth2_scheme
+from app.api.v1.rbac import has_role, is_platform_staff
+from app.api.v1.pagination import normalize_count_result
 
 router = APIRouter()
 
@@ -85,8 +87,13 @@ def _avatar_content_type_from_bytes(data: bytes) -> Optional[str]:
 
 # API端点
 @router.get("/me", response_model=UserInDB)
-async def read_user_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
+async def read_user_me(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_session),
+):
+    base = UserInDB.model_validate(current_user)
+    pa = has_role(db, current_user.id, "platform_admin")
+    return base.model_copy(update={"is_platform_admin": bool(pa)})
 
 @router.get("/me/notifications", response_model=List[NotificationInDB])
 async def list_my_notifications(
@@ -366,7 +373,7 @@ async def read_users(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session),
 ):
-    if not current_user.is_superuser:
+    if not is_platform_staff(db, current_user):
         raise HTTPException(status_code=403, detail="权限不足")
 
     limit = min(max(limit, 1), 500)
@@ -390,17 +397,23 @@ async def read_users(
         count_stmt = count_stmt.where(User.is_approved == True)  # noqa: E712
 
     raw_total = db.exec(count_stmt).first()
-    if raw_total is None:
-        total = 0
-    elif isinstance(raw_total, int):
-        total = raw_total
-    else:
-        total = int(raw_total[0])
+    total = normalize_count_result(raw_total)
 
     users = db.exec(
         statement.order_by(User.id).offset(skip).limit(limit)
     ).all()
-    return PaginatedUsers(total=total, items=users)
+    role = db.exec(select(Role).where(Role.name == "platform_admin")).first()
+    pa_ids: set[int] = set()
+    if role:
+        pa_ids = {
+            int(ur.user_id)
+            for ur in db.exec(select(UserRole).where(UserRole.role_id == role.id)).all()
+        }
+    items = [
+        UserInDB.model_validate(u).model_copy(update={"is_platform_admin": int(u.id) in pa_ids})
+        for u in users
+    ]
+    return PaginatedUsers(total=total, items=items)
 
 @router.get("/{user_id}", response_model=UserInDB)
 async def read_user(
@@ -408,10 +421,11 @@ async def read_user(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_session)
 ):
-    if not current_user.is_superuser:
+    if not is_platform_staff(db, current_user):
         raise HTTPException(status_code=403, detail="权限不足")
-    
+
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
-    return user
+    pa = has_role(db, user.id, "platform_admin")
+    return UserInDB.model_validate(user).model_copy(update={"is_platform_admin": bool(pa)})

@@ -10,7 +10,7 @@ alwaysApply: true
   1. `TOOLBOX_DEPLOY_ENV`（`internal`/`external`）强制指定
   2. 请求 Host 命中 `external_hosts`（默认包含 `47.116.180.173`）判定为外网
   3. 其余默认内网
-- 可见性配置统一走 Admin API：
+- 可见性配置统一走 Admin API（持久化到 `backend/runtime/tool_visibility.json`；无配置文件时外网可见工具键会合并 **`TOOLBOX_VISIBLE_TOOL_KEYS`** 环境变量，详见 `docs/TOOL_VISIBILITY_ENV_RUNBOOK.md` §2.1）：
   - `GET /api/v1/admin/system/tool-visibility`
   - `PUT /api/v1/admin/system/tool-visibility`
 - 外网发布默认值：

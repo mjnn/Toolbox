@@ -13,16 +13,17 @@
         class="login-form"
         @submit.prevent="handleLogin"
       >
-        <el-form-item prop="username">
+        <el-form-item prop="username" label="用户名">
           <el-input
             v-model="formData.username"
             placeholder="用户名"
             size="large"
             :prefix-icon="User"
+            autocomplete="username"
           />
         </el-form-item>
         
-        <el-form-item prop="password">
+        <el-form-item prop="password" label="密码">
           <el-input
             v-model="formData.password"
             type="password"
@@ -30,6 +31,7 @@
             size="large"
             :prefix-icon="Lock"
             show-password
+            autocomplete="current-password"
           />
         </el-form-item>
         
@@ -67,6 +69,7 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { User, Lock } from '@element-plus/icons-vue'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { getFriendlyApiErrorMessage } from '@/utils/apiError'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -86,29 +89,6 @@ const formRules: FormRules = {
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' }
   ]
-}
-
-// 错误消息映射（英文 -> 中文）
-const errorMessageMap: Record<string, string> = {
-  'Incorrect username or password': '用户名或密码错误',
-  'Username already registered': '用户名已被注册',
-  'Email already registered': '邮箱已被注册',
-  'Password must be at least 8 characters': '密码必须至少8个字符',
-  'Account pending admin approval': '账号尚在审核中，请等待管理员通过后再登录',
-}
-
-const getFriendlyErrorMessage = (error: any): string => {
-  const message = error.message || ''
-  
-  // 查找映射表中的错误消息
-  for (const [key, value] of Object.entries(errorMessageMap)) {
-    if (message.includes(key)) {
-      return value
-    }
-  }
-  
-  // 如果没有匹配，返回原始消息
-  return message || '登录失败'
 }
 
 const showForgotPasswordTip = async () => {
@@ -148,7 +128,7 @@ const handleLogin = async () => {
     router.push('/')
   } catch (error: any) {
     console.error('登录失败:', error)
-    const friendlyMessage = getFriendlyErrorMessage(error)
+    const friendlyMessage = getFriendlyApiErrorMessage(error, '登录失败')
     ElMessage.error(friendlyMessage)
   } finally {
     loading.value = false
@@ -162,11 +142,12 @@ const handleLogin = async () => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
+  padding: 16px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .login-card {
-  width: 400px;
+  width: min(400px, 100%);
   padding: 40px;
   background: white;
   border-radius: 12px;
@@ -193,6 +174,10 @@ const handleLogin = async () => {
   margin-bottom: 22px;
 }
 
+.login-form :deep(.el-form-item__label) {
+  font-weight: 600;
+}
+
 .login-btn {
   width: 100%;
   margin-top: 10px;
@@ -204,5 +189,20 @@ const handleLogin = async () => {
   display: flex;
   justify-content: space-between;
   margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .login-card {
+    padding: 24px 18px;
+    border-radius: 10px;
+  }
+
+  .logo {
+    margin-bottom: 20px;
+  }
+
+  .logo h1 {
+    font-size: 22px;
+  }
 }
 </style>
