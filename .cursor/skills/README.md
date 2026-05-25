@@ -1,27 +1,18 @@
-# 项目 Agent Skills
+# Agent Skills（本仓库）
 
-## 全项目通用（推荐）
+跨项目交付能力使用**个人 Skill**（不放在本仓库内）：
 
-个人 Skill **`ecs-github-delivery-ops`** 已安装在：
+| Skill | 路径 |
+|-------|------|
+| `ecs-github-delivery-ops` | `%USERPROFILE%\.cursor\skills\ecs-github-delivery-ops\` |
 
-- Windows：`%USERPROFILE%\.cursor\skills\ecs-github-delivery-ops\`
-- macOS/Linux：`~/.cursor/skills/ecs-github-delivery-ops/`
-
-**任意 Cursor 工作区**均可使用：
+用法（任意 Cursor 工作区）：
 
 ```text
-@ecs-github-delivery-ops 连接 ECS 并 docker ps
-@ecs-github-delivery-ops 部署服务 xxx 到 ECS
-@ecs-github-delivery-ops 提交并 push 当前仓库到 GitHub
+@ecs-github-delivery-ops 连接 ECS / 部署服务 / push GitHub
 ```
 
-- GitHub 地址以当前仓库 `git remote get-url origin` 为准（不限 Toolbox）。
-- 打开 **Toolbox_Project** 时，Agent 会自动识别 Toolbox 脚本（split 部署等）；其他仓库走通用 Compose 流程。
+- Git 远程与分支：以当前仓库 `git remote`、`git branch` 为准。
+- 部署步骤：优先当前仓库自带的 `scripts/*deploy*`、`deploy/**`、部署文档；无则走 Skill 中的通用 Compose 流程。
 
-## 本目录遗留
-
-| Skill | 说明 |
-|-------|------|
-| `toolbox-delivery-ops/` | 兼容别名，内容已迁移到个人 `ecs-github-delivery-ops` |
-
-新机器只需复制个人 Skills 目录，无需每个仓库各拷一份。
+新机器：复制整个 `ecs-github-delivery-ops` 文件夹到上述个人 Skills 目录即可。
